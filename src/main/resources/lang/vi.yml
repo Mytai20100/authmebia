@@ -1,0 +1,25 @@
+# AuthMeBia language file - Tiếng Việt
+# Hỗ trợ MiniMessage: <red>, <gold>, <bold>, v.v.
+# Placeholder: {player} = tên người chơi, {player_ip} = địa chỉ IP của người chơi
+
+# Thông báo ngắt kết nối / kick (hiện trên màn hình disconnect)
+disconnect:
+  verification_failed: "<red>Xác minh thất bại."
+  registration_cancelled: "<red>Đăng ký đã bị hủy."
+  must_agree_rules: "<red>Bạn phải đồng ý với nội quy máy chủ."
+  login_failed: "<red>Đăng nhập thất bại."
+  logout: "<gray>Bạn đã ngắt kết nối khỏi máy chủ."
+  too_many_attempts: "<red>Quá nhiều lần nhập sai mật khẩu."
+  ip_banned: "<red>IP của bạn (<yellow>{player_ip}</yellow>) đã bị cấm tạm thời do nhập sai mật khẩu quá nhiều lần."
+
+# Nhãn lỗi nội tuyến trong dialog (gắn thêm vào nhãn ô nhập)
+error:
+  wrong_password: "Sai mật khẩu"
+  password_empty: "Mật khẩu không được để trống"
+  passwords_mismatch: "Mật khẩu không khớp"
+  captcha_incorrect: "Mã xác minh không đúng"
+
+# Tin nhắn in-game (gửi cho người chơi sau khi vào thế giới)
+message:
+  wrong_password: "<red>Sai mật khẩu."
+  password_empty_or_mismatch: "<red>Mật khẩu trống hoặc không khớp."

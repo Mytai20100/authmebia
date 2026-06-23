@@ -1,0 +1,23 @@
+name: AuthMeBia
+description: $description
+version: '0.0.2'
+folia-supported: true
+main: com.authmebia.AuthMeBia
+loader: com.authmebia.AuthMeBiaLoader
+api-version: '1.21'
+load: POSTWORLD
+
+authors: [mytai]
+website: github.com/mytai20100/authmebia
+
+dependencies:
+  server:
+    AuthMe:
+      load: BEFORE
+      required: true
+      join-classpath: true
+
+permissions:
+  authmebia.bypass:
+    description: Add or remove players from the dialog bypass list (/bia add, /bia rm)
+    default: op

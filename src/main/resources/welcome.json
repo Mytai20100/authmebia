@@ -1,0 +1,30 @@
+{
+  "welcome_size": { "width": 800, "height": 200 },
+  "welcome_style": "horizontal",
+  "radial": 16,
+  "layers": [
+    {
+      "name": "background",
+      "z": 0,
+      "patch": "background.png",
+      "color": "#1a1a2e"
+    },
+    {
+      "name": "avatar",
+      "z": 1,
+      "patch": "{player_avatar}",
+      "x": 20,
+      "y": 20,
+      "size": 160
+    },
+    {
+      "name": "player_name",
+      "z": 2,
+      "color": "#ffffff",
+      "font": "Arial",
+      "size": 48,
+      "x": 200,
+      "y": 80
+    }
+  ]
+}

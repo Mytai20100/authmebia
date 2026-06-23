@@ -1,0 +1,213 @@
+# AuthMeBia configuration.
+# Text fields support MiniMessage color/decoration tags, e.g. <red>, <#ff0000>, <bold>.
+# Use {player} as a placeholder for the player's name where supported.
+# Use \n inside a string to insert a line break.
+
+# Language code for messages (disconnect/kick, errors, chat).
+# Built-in options: en (English), vi (Vietnamese).
+# To add your own, copy plugins/AuthMeBia/lang/en.yml to lang/<code>.yml and edit it.
+# Reload with /bia reload.
+lang: en
+
+# Bypass list: players added with /bia add <player> (alias of /authmebia add)
+# never see any AuthMeBia dialog (captcha, register, login, or rule) and
+# authenticate with AuthMe's own plain /login and /register commands
+# instead. Remove a player with /bia rm <player>. This list has no key
+# here in config.yml -- it is stored per player under
+# plugins/AuthMeBia/data/<uuid>/player.yml, and managed entirely through
+# those two commands. See doc/README.md for the full file format.
+
+dialog:
+  # Master switch for the register/login dialog feature.
+  enabled: true
+
+  # If true, the dialog is shown during the configuration phase, before the
+  # player fully joins the world (blocks join until submitted).
+  # If false, the dialog is shown right after the player spawns in-game instead.
+  menu: true
+
+  # Minimum client protocol version required to show the register/login
+  # dialog. Dialogs are a vanilla feature added in Minecraft 1.21.6
+  # (protocol 771); older clients cannot render dialog packets at all, so
+  # forcing one on them just leaves their connection stuck instead of
+  # showing an error.
+  #
+  # This check applies to both dialog paths: the pre-spawn dialog (menu:
+  # true) and the in-game/post-spawn dialog (menu: false). If a connecting
+  # client's protocol version is below this number, every AuthMeBia dialog
+  # (captcha, register, login, rule) is skipped entirely for that player and
+  # they join normally, using AuthMe's own /login and /register commands
+  # instead (the regular AuthMe behavior with no dialog involved).
+  #
+  # This check only has an effect if ViaVersion (or a fork) is installed,
+  # since that is what allows clients on a different protocol version to
+  # connect in the first place. Without ViaVersion, every client is already
+  # on the server's own version, so this setting has no effect.
+  #
+  # Common protocol numbers, for reference:
+  #   771 = 1.21.6 (first version with dialog support)
+  #   772 = 1.21.7 / 1.21.8
+  #   773 = 1.21.9
+  #   774 = 1.21.11
+  # Full list: https://minecraft.wiki/w/Protocol_version
+  min_protocol_version: 771
+
+  # How long, in milliseconds, to wait for ViaVersion to report a
+  # connection's protocol version during the pre-spawn dialog check, before
+  # giving up and treating the dialog as unsupported for that connection.
+  # This only matters for the pre-spawn path (menu: true): at that point in
+  # the connection, ViaVersion may occasionally need a brief moment to
+  # finish associating a protocol version with the player's UUID, and this
+  # is the budget given for that to happen before falling back safely.
+  # Valid range: 0-5000. Default: 500.
+  protocol_detect_wait_ms: 500
+
+  # Width in pixels of the main action buttons (Register/Login/Agree/Logout).
+  # Valid range: 1-1024.
+  button_width: 200
+
+  # Width in pixels of the text input fields (password/confirm password).
+  # Valid range: 1-1024.
+  input_width: 200
+
+  register:
+    # Title shown at the top of the registration dialog.
+    title: "<#4287f5>Create Account</#4287f5>"
+    # Body text shown above the input fields. Leave empty for no body text.
+    content: ""
+
+  login:
+    # Title shown at the top of the login dialog.
+    title: "<gold>Login</gold>"
+    # Body text shown above the password field.
+    content: "<gold>Welcome back, {player}!</gold>"
+
+  # Label of the button that disconnects the player instead of submitting.
+  logout_button: "<red>Logout</red>"
+
+  # Label of the button that submits the registration form.
+  submit_register_button: "<green>Register</green>"
+
+  # Label of the button that submits the login form.
+  submit_login_button: "<green>Login</green>"
+
+rule:
+  # If true, players must accept the server rules (after registering) before
+  # they are allowed to join.
+  enabled: false
+
+  # Title of the rules dialog.
+  title: "<gold>Server Rules</gold>"
+
+  # Body text of the rules dialog. Supports \n for line breaks.
+  content: ""
+
+  # Label next to the agreement checkbox.
+  checkbox_label: "<yellow>I have read and agree to the rules</yellow>"
+
+  # Label of the button that confirms agreement. The checkbox must be ticked
+  # for this to count as agreeing.
+  agree_button: "<green>Agree</green>"
+
+discord:
+  # If true, sends a Discord webhook notification (e.g. on player join).
+  enabled: false
+
+  # Discord webhook URL to send notifications to. Required if enabled is true.
+  webhook_url: ""
+
+welcome_image:
+  # If true, sends a welcome image to the player (see welcome.json for the
+  # image configuration). For a full guide on customizing the welcome.json
+  # canvas layout (background, avatar, text layers, fonts, etc.), see
+  # plugins/AuthMeBia/doc/README.md.
+  enabled: false
+
+links:
+  # Master switch for extra link/utility buttons shown in the dialogs
+  # (e.g. Discord invite, copy server IP).
+  enabled: false
+
+  # How the link buttons are arranged relative to the main action buttons.
+  # grouped:   link buttons are placed together with the main and logout
+  #            buttons in a single block.
+  # separated: link buttons are placed in their own row, separate from the
+  #            logout button.
+  position: grouped
+
+  # Default width in pixels for link buttons that don't set their own width.
+  # Valid range: 1-1024.
+  button_width: 200
+
+  # List of link buttons to display. Each entry supports:
+  #   enabled - whether this specific button is shown.
+  #   label   - button text, supports MiniMessage tags and {player}.
+  #   action  - "open_url" to open a link, or "copy" to copy text/IP to clipboard.
+  #   value   - the URL to open, or the text to copy.
+  #   width   - button width in pixels, overrides the default button_width above.
+  buttons:
+    - enabled: true
+      label: "<#5865F2>Discord</#5865F2>"
+      action: open_url
+      value: "https://discord.gg/abc"
+      width: 200
+    - enabled: true
+      label: "<gray>{player}, copy IP</gray>"
+      action: copy
+      value: "play.example.com"
+      width: 200
+
+captcha:
+  # Master switch for the captcha dialog. This plugin generates its own
+  # captcha code (it does not read AuthMe's internal captcha state, since
+  # that is not exposed through AuthMe's public API).
+  #
+  # When enabled, this also requires AuthMe's own captcha.useCaptcha option
+  # to be true in AuthMe's config.yml. If AuthMe has it disabled, the
+  # captcha dialog here will not trigger either, even if enabled below is
+  # true. This keeps the two plugins' protection settings in sync.
+  enabled: false
+
+  # Number of random characters in the generated captcha code.
+  # Valid range: 4-10.
+  length: 5
+
+  # Title of the captcha dialog.
+  title: "<gold>Verification</gold>"
+
+  # Body text of the captcha dialog. Use {code} to show the generated code.
+  content: "<gray>Type the code below to continue:</gray>\n<white><bold>{code}</bold></white>"
+
+  # Label of the input field where the player types the code.
+  input_label: "Enter code"
+
+  # Label of the button that submits the typed code.
+  submit_button: "<green>Verify</green>"
+
+  # How long (in seconds) a successful captcha verification is trusted for,
+  # so the player isn't asked again on every join during this window.
+  # Default: 5 hours (18000 seconds).
+  trust_duration_seconds: 18000
+
+login_attempts:
+  # If true, kicks the player after too many wrong password attempts in a
+  # single login dialog session.
+  enabled: false
+
+  # Number of wrong password attempts allowed before the player is kicked.
+  max_tries: 5
+
+ip_ban:
+  # If true, temporarily bans an IP address after repeated wrong password
+  # attempts across login sessions from that IP (spam/brute-force
+  # protection). Ban duration escalates with repeated offenses.
+  enabled: false
+
+  # Number of wrong password attempts from the same IP (across sessions)
+  # before the first temporary ban is issued.
+  threshold: 10
+
+  # Ban durations in seconds for each escalation level. The 1st offense
+  # uses the 1st value, the 2nd offense uses the 2nd value, and so on.
+  # The last value is reused for any further offense beyond the list.
+  ban_durations_seconds: [600, 1800, 3600, 86400]
