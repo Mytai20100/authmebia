@@ -1,9 +1,11 @@
 package com.authmebia;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -23,8 +25,10 @@ public class Cmd {
         commands.register(
             Commands.literal("authmebia")
                 .then(Commands.literal("reload")
+                    .requires(source -> source.getSender().isOp())
                     .executes(ctx -> { reload(ctx.getSource().getSender()); return Command.SINGLE_SUCCESS; }))
                 .then(Commands.literal("rl")
+                    .requires(source -> source.getSender().isOp())
                     .executes(ctx -> { reload(ctx.getSource().getSender()); return Command.SINGLE_SUCCESS; }))
                 .then(Commands.literal("help")
                     .executes(ctx -> { help(ctx.getSource().getSender()); return Command.SINGLE_SUCCESS; }))
@@ -44,6 +48,25 @@ public class Cmd {
                             removeBypass(ctx.getSource().getSender(), StringArgumentType.getString(ctx, "player"));
                             return Command.SINGLE_SUCCESS;
                         })))
+                .then(Commands.literal("recover")
+                    .requires(source -> source.getSender().hasPermission("bia.admin.recover"))
+                    .then(Commands.argument("player", StringArgumentType.word())
+                        .executes(ctx -> {
+                            recover(ctx.getSource().getSender(), StringArgumentType.getString(ctx, "player"));
+                            return Command.SINGLE_SUCCESS;
+                        })))
+                .then(Commands.literal("debug")
+                    .requires(source -> source.getSender().isOp())
+                    .then(Commands.argument("feature", StringArgumentType.word())
+                        .then(Commands.argument("value", BoolArgumentType.bool())
+                            .executes(ctx -> {
+                                debug(
+                                    ctx.getSource().getSender(),
+                                    StringArgumentType.getString(ctx, "feature"),
+                                    BoolArgumentType.getBool(ctx, "value")
+                                );
+                                return Command.SINGLE_SUCCESS;
+                            }))))
                 .executes(ctx -> { help(ctx.getSource().getSender()); return Command.SINGLE_SUCCESS; })
                 .build(),
             "AuthMeBia main command",
@@ -55,27 +78,29 @@ public class Cmd {
         plugin.cfg().reload();
         plugin.lang().reload();
 
-        // Re-read AuthMe's config.yml so cached values (blind effect, captcha
-        // state) stay in sync after an admin edits AuthMe between reloads.
         if (plugin.authMeListener() != null) {
             plugin.authMeListener().refreshAuthMeConfigCache();
         }
 
-        // Reset the ViaVersion lookup cache in case ViaVersion was
-        // installed or removed since the last enable/reload.
         ProtocolGate.reset();
 
         sender.sendMessage(Component.text("AuthMeBia config and lang reloaded."));
     }
 
     private void help(org.bukkit.command.CommandSender sender) {
-        sender.sendMessage(Component.text(
-            "/bia reload | /bia rl  - Reload config\n" +
-            "/bia info              - Plugin info\n" +
-            "/bia add <player>      - Add a player to the dialog bypass list\n" +
-            "/bia rm <player>       - Remove a player from the dialog bypass list\n" +
-            "/bia help              - Show this help"
-        ));
+        boolean op = sender.isOp();
+        StringBuilder sb = new StringBuilder();
+        sb.append("/bia reload | /bia rl  - Reload config (OP only)\n");
+        sb.append("/bia info              - Plugin info\n");
+        sb.append("/bia add <player>      - Add a player to the dialog bypass list\n");
+        sb.append("/bia rm <player>       - Remove a player from the dialog bypass list\n");
+        sb.append("/bia recover <player>  - Force a password reset on the player's next login\n");
+        if (op) {
+            sb.append("/bia debug <feature> <true|false>  - Test a feature (OP only)\n");
+            sb.append("  Features: captcha, email, register, login, wait, recover, rule\n");
+        }
+        sb.append("/bia help              - Show this help");
+        sender.sendMessage(Component.text(sb.toString()));
     }
 
     private void info(org.bukkit.command.CommandSender sender) {
@@ -84,11 +109,131 @@ public class Cmd {
         Plugin authme = plugin.getServer().getPluginManager().getPlugin("AuthMe");
         if (authme == null) authme = plugin.getServer().getPluginManager().getPlugin("AuthMeReloaded");
         String authmeVer = authme != null ? authme.getDescription().getVersion() : "unknown";
-        sender.sendMessage(Component.text(
-            "AuthMeBia v" + version + "\n" +
-            "Platform: " + platform + "\n" +
-            "AuthMe: " + authmeVer
+        sender.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(
+            "<gold>AuthMeBia</gold> <white>v" + version + "</white>\n" +
+            "<gray>Author: </gray><white>mytai20100</white>\n" +
+            "<gray>GitHub: </gray><aqua><click:open_url:\'https://github.com/mytai20100/authmebia\'>https://github.com/mytai20100/authmebia</click></aqua>\n" +
+            "<gray>Platform: </gray><white>" + platform + "</white>\n" +
+            "<gray>AuthMe: </gray><white>" + authmeVer + "</white>"
         ));
+    }
+
+    private void debug(org.bukkit.command.CommandSender sender, String feature, boolean value) {
+        AuthMe authMe = plugin.authMeListener();
+        Cfg cfg = plugin.cfg();
+
+        switch (feature.toLowerCase()) {
+            case "captcha" -> {
+                if (authMe != null) {
+                    authMe.overrideCachedAuthMeCaptchaEnabled(value);
+                    sender.sendMessage(Component.text(
+                        "[debug] AuthMe captcha override set to " + value + ". "
+                        + "AuthMeBia captcha.enabled=" + cfg.captchaEnabled() + ". "
+                        + "captchaRequired() will return " + (cfg.captchaEnabled() && value),
+                        NamedTextColor.YELLOW));
+                } else {
+                    sender.sendMessage(Component.text("[debug] AuthMe listener not available.", NamedTextColor.RED));
+                }
+            }
+            case "email" -> {
+                if (authMe != null) {
+                    authMe.overrideCachedEmailEnabled(value);
+                    sender.sendMessage(Component.text(
+                        "[debug] AuthMe email override set to " + value + ". "
+                        + "AuthMeBia email.enabled=" + cfg.emailEnabled() + ". "
+                        + "isEmailVerificationActive() will return " + (cfg.emailEnabled() && value),
+                        NamedTextColor.YELLOW));
+                } else {
+                    sender.sendMessage(Component.text("[debug] AuthMe listener not available.", NamedTextColor.RED));
+                }
+            }
+            case "register" -> {
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
+                    return;
+                }
+                if (!value) {
+                    sender.sendMessage(Component.text("[debug] Use 'true' to show the register GUI.", NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text("[debug] Showing register dialog...", NamedTextColor.YELLOW));
+                Runnable show = () -> {
+                    if (authMe != null) Menu.showRegisterIngame(p, cfg, plugin.lang(), authMe);
+                };
+                runOnPlayer(p, show);
+            }
+            case "login" -> {
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
+                    return;
+                }
+                if (!value) {
+                    sender.sendMessage(Component.text("[debug] Use 'true' to show the login GUI.", NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text("[debug] Showing login dialog...", NamedTextColor.YELLOW));
+                Runnable show = () -> {
+                    if (authMe != null) Menu.showLoginIngame(p, cfg, plugin.lang(), authMe, plugin.ipGuard());
+                };
+                runOnPlayer(p, show);
+            }
+            case "wait" -> {
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
+                    return;
+                }
+                if (!value) {
+                    sender.sendMessage(Component.text("[debug] Use 'true' to show the wait dialog.", NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text("[debug] Showing wait dialog...", NamedTextColor.YELLOW));
+                runOnPlayer(p, () -> Menu.showWaitDialog(p, cfg));
+            }
+            case "recover" -> {
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
+                    return;
+                }
+                if (!value) {
+                    sender.sendMessage(Component.text("[debug] Use 'true' to show the recover GUI.", NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text("[debug] Showing recover dialog...", NamedTextColor.YELLOW));
+                Runnable show = () -> {
+                    if (authMe != null) {
+                        Menu.showRecoverIngame(p, cfg, authMe, () ->
+                            p.sendMessage(Component.text("[debug] Recover submitted.", NamedTextColor.GREEN)));
+                    }
+                };
+                runOnPlayer(p, show);
+            }
+            case "rule" -> {
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
+                    return;
+                }
+                if (!value) {
+                    sender.sendMessage(Component.text("[debug] Use 'true' to show the rule dialog.", NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text("[debug] Showing rule dialog... (result goes to console)", NamedTextColor.YELLOW));
+                p.sendMessage(Component.text(
+                    "[debug] Rule dialog content:\nTitle: " + cfg.ruleTitle(p.getName()).toString() + "\n"
+                    + "Note: rule dialog is pre-spawn only. To test fully, set dialog.menu=true and rejoin.",
+                    NamedTextColor.YELLOW));
+            }
+            default -> sender.sendMessage(Component.text(
+                "[debug] Unknown feature '" + feature + "'. Valid features: captcha, email, register, login, wait, recover, rule",
+                NamedTextColor.RED));
+        }
+    }
+
+    private void runOnPlayer(Player player, Runnable task) {
+        if (plugin.isFolia()) {
+            player.getScheduler().run(plugin, t -> task.run(), null);
+        } else {
+            plugin.getServer().getScheduler().runTask(plugin, task);
+        }
     }
 
     private void addBypass(org.bukkit.command.CommandSender sender, String name) {
@@ -119,6 +264,39 @@ public class Cmd {
             sender.sendMessage(Component.text(name + " was removed from the AuthMeBia bypass list."));
         } else {
             sender.sendMessage(Component.text(name + " was not on the AuthMeBia bypass list."));
+        }
+    }
+
+    private void recover(org.bukkit.command.CommandSender sender, String name) {
+        UUID uuid = resolveUuid(name);
+        if (uuid == null) {
+            sender.sendMessage(Component.text(
+                "Could not resolve a UUID for '" + name + "'. The player must be online or have joined this server before."));
+            return;
+        }
+
+        AuthMe authMe = plugin.authMeListener();
+        if (authMe != null && !authMe.isRegisteredByName(name)) {
+            sender.sendMessage(Component.text(name + " is not registered with AuthMe, so there is no password to reset."));
+            return;
+        }
+
+        plugin.recoverStore().flag(uuid, name);
+
+        Player online = plugin.getServer().getPlayerExact(name);
+        if (online != null && authMe != null) {
+            Runnable show = () -> Menu.showRecoverIngame(online, plugin.cfg(), authMe, () -> {
+                plugin.recoverStore().clear(online.getUniqueId());
+                if (!authMe.isAuthenticated(online)) authMe.runAsync(() -> authMe.login(online));
+            });
+            if (plugin.isFolia()) {
+                online.getScheduler().run(plugin, t -> show.run(), null);
+            } else {
+                plugin.getServer().getScheduler().runTask(plugin, show);
+            }
+            sender.sendMessage(Component.text(name + " is online and has been shown the password reset dialog."));
+        } else {
+            sender.sendMessage(Component.text(name + " will be asked to set a new password on their next login."));
         }
     }
 

@@ -84,6 +84,79 @@ public class Cfg {
         return parse(config.getString("dialog.submit_login_button", "<green>Login</green>"));
     }
 
+    public boolean dialogAllowClose() {
+        return config.getBoolean("dialog.allow_close", true);
+    }
+
+    public AuthMode authMode() {
+        return AuthMode.parse(config.getString("auth_mode.mode", "password"));
+    }
+
+    private int clampCodeLength(int length) {
+        if (length < 4) return 4;
+        if (length > 8) return 8;
+        return length;
+    }
+
+    public int pinLength() {
+        return clampCodeLength(config.getInt("auth_mode.pin.length", 4));
+    }
+
+    public Component pinTitle() {
+        return parse(config.getString("auth_mode.pin.title", "<gold>Enter your PIN</gold>"));
+    }
+
+    public Component pinConfirmButton() {
+        return parse(config.getString("auth_mode.pin.confirm_button", "<green>Confirm</green>"));
+    }
+
+    public Component pinDeleteButton() {
+        return parse(config.getString("auth_mode.pin.delete_button", "<red>⌫ Delete</red>"));
+    }
+
+    public int pinButtonWidth() {
+        return clampWidth(config.getInt("auth_mode.pin.button_width", 100));
+    }
+
+    public int sliderLength() {
+        return clampCodeLength(config.getInt("auth_mode.slider.length", 4));
+    }
+
+    public Component sliderTitle() {
+        return parse(config.getString("auth_mode.slider.title", "<gold>Enter your code</gold>"));
+    }
+
+    public Component sliderConfirmButton() {
+        return parse(config.getString("auth_mode.slider.confirm_button", "<green>Confirm</green>"));
+    }
+
+    public int sliderButtonWidth() {
+        return clampWidth(config.getInt("auth_mode.slider.button_width", 100));
+    }
+
+    public boolean authWaitEnabled() {
+        return config.getBoolean("auth_wait.wait", true);
+    }
+
+    public boolean authWaitPreJoin() {
+        return config.getBoolean("auth_wait.prejoin", true);
+    }
+
+    public int authWaitSeconds() {
+        int seconds = config.getInt("auth_wait.time", 3);
+        if (seconds < 1) return 1;
+        if (seconds > 10) return 10;
+        return seconds;
+    }
+
+    public Component authWaitTitle() {
+        return parse(config.getString("auth_wait.title", "<gold>Please wait</gold>"));
+    }
+
+    public Component authWaitContent() {
+        return parse(config.getString("auth_wait.content", "<gray>Logging you in, please wait...</gray>"));
+    }
+
     public boolean ruleEnabled() {
         return config.getBoolean("rule.enabled", false);
     }
@@ -175,6 +248,66 @@ public class Cfg {
         return Math.max(0, seconds);
     }
 
+    public boolean emailEnabled() {
+        return config.getBoolean("email.enabled", false);
+    }
+
+    public int emailCodeLength() {
+        int length = config.getInt("email.code_length", 6);
+        if (length < 4) return 4;
+        if (length > 8) return 8;
+        return length;
+    }
+
+    public int emailResendCooldown() {
+        int seconds = config.getInt("email.resend_cooldown", 60);
+        if (seconds < 10) return 10;
+        if (seconds > 600) return 600;
+        return seconds;
+    }
+
+    public String emailFieldLabel() {
+        return config.getString("email.field_label", "Email");
+    }
+
+    public Component emailVerifyTitle() {
+        return parse(config.getString("email.verify_title", "<gold>Verify your email</gold>"));
+    }
+
+    public Component emailVerifyContent(String email, int cooldownRemaining) {
+        String raw = config.getString("email.verify_content",
+                "<gray>A code was sent to {email}.\nResend available in {cooldown}s.</gray>");
+        raw = raw.replace("{email}", email == null ? "" : email)
+                 .replace("{cooldown}", Integer.toString(Math.max(0, cooldownRemaining)));
+        return parse(raw);
+    }
+
+    public String emailCodeLabel() {
+        return config.getString("email.code_label", "Code");
+    }
+
+    public Component emailVerifyButton() {
+        return parse(config.getString("email.verify_button", "<green>Verify</green>"));
+    }
+
+    public Component emailResendButton() {
+        return parse(config.getString("email.resend_button", "<yellow>Resend code</yellow>"));
+    }
+
+    public Component emailInvalidEmailMessage() {
+        return parse(config.getString("email.invalid_email_message",
+                "<red>Please enter a valid email address.</red>"));
+    }
+
+    public Component emailSendFailedMessage() {
+        return parse(config.getString("email.send_failed_message",
+                "<red>Could not send the email. Please contact an admin.</red>"));
+    }
+
+    public String emailWrongCodeError() {
+        return config.getString("email.wrong_code_error", "Incorrect code");
+    }
+
     public boolean loginAttemptsEnabled() {
         return config.getBoolean("login_attempts.enabled", false);
     }
@@ -182,6 +315,54 @@ public class Cfg {
     public int loginMaxTries() {
         int tries = config.getInt("login_attempts.max_tries", 5);
         return Math.max(1, tries);
+    }
+
+    public boolean loginTimeoutEnabled() {
+        return config.getBoolean("login_timeout.enabled", false);
+    }
+
+    public int loginTimeoutSeconds() {
+        int seconds = config.getInt("login_timeout.seconds", 60);
+        if (seconds == 0) return 0;
+        if (seconds < 10) return 10;
+        if (seconds > 3600) return 3600;
+        return seconds;
+    }
+
+    public Component loginTimeoutKickMessage() {
+        return parse(config.getString("login_timeout.kick_message",
+                "<red>Authentication timed out. Please reconnect.</red>"));
+    }
+
+    public Component recoverTitle() {
+        return parse(config.getString("recover.title", "<gold>Reset Password</gold>"));
+    }
+
+    public Component recoverContent() {
+        return parse(config.getString("recover.content",
+                "<gray>An admin has requested you set a new password.</gray>"));
+    }
+
+    public String recoverNewPasswordLabel() {
+        return config.getString("recover.new_password_label", "New password");
+    }
+
+    public String recoverConfirmPasswordLabel() {
+        return config.getString("recover.confirm_password_label", "Confirm password");
+    }
+
+    public Component recoverSubmitButton() {
+        return parse(config.getString("recover.submit_button", "<green>Set Password</green>"));
+    }
+
+    public Component recoverSuccessMessage(String playerName) {
+        return parse(replacePlayer(config.getString("recover.success_message",
+                "<green>Password updated successfully.</green>"), playerName));
+    }
+
+    public Component recoverMismatchMessage() {
+        return parse(config.getString("recover.mismatch_message",
+                "<red>Passwords do not match. Try again.</red>"));
     }
 
     public boolean ipBanEnabled() {
@@ -196,9 +377,7 @@ public class Cfg {
     public long ipBanDurationSeconds(int level) {
         List<Integer> durations = config.getIntegerList("ip_ban.ban_durations_seconds");
         if (durations.isEmpty()) return 600;
-        // level is 1-based (first offense = 1). Clamp to the last element
-        // for any offense beyond the end of the list.
-        int index = Math.min(level - 1, durations.size() - 1);
+            int index = Math.min(level - 1, durations.size() - 1);
         if (index < 0) index = 0;
         return durations.get(index);
     }

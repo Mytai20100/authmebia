@@ -21,3 +21,9 @@ permissions:
   authmebia.bypass:
     description: Add or remove players from the dialog bypass list (/bia add, /bia rm)
     default: op
+  bia.admin.recover:
+    description: Force a player's password reset on next login (/bia recover)
+    default: op
+  bia.admin.debug:
+    description: Simulate AuthMe API feature states in-game for testing (/bia debug)
+    default: op

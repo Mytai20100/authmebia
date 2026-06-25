@@ -19,6 +19,7 @@ public final class AuthMeBia extends JavaPlugin {
     private IpGuard ipGuard;
     private Lang lang;
     private BiaList biaList;
+    private RecoverStore recoverStore;
     private boolean foliaServer;
     private OkHttpClient httpClient;
     private AuthMe authMeListener;
@@ -40,11 +41,8 @@ public final class AuthMeBia extends JavaPlugin {
         captcha = new Captcha();
         ipGuard = new IpGuard();
         biaList = new BiaList(this);
+        recoverStore = new RecoverStore(this);
 
-        // Single shared HTTP client for all outbound requests (Discord webhooks,
-        // avatar fetches). OkHttp manages its own thread pool and connection pool
-        // internally; creating multiple instances wastes both. Explicit timeouts
-        // prevent hung requests from blocking async threads indefinitely.
         httpClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
@@ -55,16 +53,10 @@ public final class AuthMeBia extends JavaPlugin {
             saveResource("welcome.json", false);
         }
 
-        // Sample background image referenced by the default welcome.json.
-        // Replace this file with your own art at any size that matches your
-        // welcome_size; this one is just a small placeholder.
         if (!new java.io.File(getDataFolder(), "background.png").exists()) {
             saveResource("background.png", false);
         }
 
-        // Customization guide for welcome.json, copied into the plugin's
-        // own data folder so it's easy to find right next to the file it
-        // documents.
         if (!new java.io.File(getDataFolder(), "doc/README.md").exists()) {
             saveResource("doc/README.md", false);
         }
@@ -81,13 +73,36 @@ public final class AuthMeBia extends JavaPlugin {
             new Cmd(this).register(commands);
         });
 
+        warnIfAuthMeDialogConflict();
+
         getLogger().info("AuthMeBia enabled on " + platformName() + ".");
+    }
+
+    private void warnIfAuthMeDialogConflict() {
+        org.bukkit.plugin.Plugin authme = getServer().getPluginManager().getPlugin("AuthMe");
+        if (authme == null) authme = getServer().getPluginManager().getPlugin("AuthMeReloaded");
+        if (authme == null) return;
+
+        java.io.File file = new java.io.File(authme.getDataFolder(), "config.yml");
+        if (!file.exists()) return;
+
+        try {
+            org.bukkit.configuration.file.YamlConfiguration yaml =
+                    org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file);
+            boolean pre = yaml.getBoolean("settings.registration.dialog.preJoin.enable", false);
+            boolean post = yaml.getBoolean("settings.registration.dialog.postJoin.enable", false);
+            if (pre || post) {
+                getLogger().warning("AuthMe's built-in dialog is enabled "
+                        + "(settings.registration.dialog.preJoin/postJoin.enable). "
+                        + "Disable it in AuthMe's config.yml to prevent two dialogs appearing at once.");
+            }
+        } catch (Exception e) {
+            getLogger().warning("Could not read AuthMe config.yml for dialog-conflict check: " + e.getMessage());
+        }
     }
 
     @Override
     public void onDisable() {
-        // Reset the ViaVersion lookup cache so a fresh detect happens if the
-        // plugin is re-enabled in the same JVM session (e.g. via PlugMan).
         ProtocolGate.reset();
 
         if (captcha != null) {
@@ -133,6 +148,10 @@ public final class AuthMeBia extends JavaPlugin {
         return biaList;
     }
 
+    public RecoverStore recoverStore() {
+        return recoverStore;
+    }
+
     public OkHttpClient httpClient() {
         return httpClient;
     }
@@ -172,10 +191,6 @@ public final class AuthMeBia extends JavaPlugin {
         }
     }
 
-    /**
-     * Returns the registered AuthMe listener instance. Needed by /bia reload
-     * to refresh the cached AuthMe config values (blind effect, captcha state).
-     */
     public AuthMe authMeListener() {
         return authMeListener;
     }

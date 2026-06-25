@@ -7,12 +7,16 @@ plugins {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.codemc.io/repository/maven-public/")
     maven("https://jitpack.io")
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("fr.xephi:authme:5.6.0-SNAPSHOT") {
+    // AuthMe 6.0.0 split into multiple modules; the core API (AuthMeApi +
+    // fr.xephi.authme.events.*) now lives in authme-core, published to the
+    // CodeMC repository. The old monolithic fr.xephi:authme artifact is gone.
+    compileOnly("fr.xephi:authme-core:6.0.0-SNAPSHOT") {
         isTransitive = false
     }
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

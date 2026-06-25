@@ -52,14 +52,11 @@ dialog:
   # Full list: https://minecraft.wiki/w/Protocol_version
   min_protocol_version: 771
 
-  # How long, in milliseconds, to wait for ViaVersion to report a
-  # connection's protocol version during the pre-spawn dialog check, before
-  # giving up and treating the dialog as unsupported for that connection.
-  # This only matters for the pre-spawn path (menu: true): at that point in
-  # the connection, ViaVersion may occasionally need a brief moment to
-  # finish associating a protocol version with the player's UUID, and this
-  # is the budget given for that to happen before falling back safely.
-  # Valid range: 0-5000. Default: 500.
+  # DEPRECATED / no longer used. The dialog-capability check now follows
+  # AuthMe 6.0.0's approach: a single synchronous ViaVersion query that fails
+  # OPEN (shows the dialog) when the version can't be resolved, instead of the
+  # old bounded-wait poll that failed closed on a timing hiccup. This key is
+  # kept only so existing configs don't error; it has no effect.
   protocol_detect_wait_ms: 500
 
   # Width in pixels of the main action buttons (Register/Login/Agree/Logout).
@@ -90,6 +87,87 @@ dialog:
 
   # Label of the button that submits the login form.
   submit_login_button: "<green>Login</green>"
+
+  # If false, re-opens the auth dialog immediately when the player dismisses
+  # it (e.g. via ESC or clicking outside). This prevents bypassing auth by
+  # closing the dialog. Only applies when dialog.menu is false (post-spawn mode);
+  # in pre-spawn mode (menu: true) the dialog already blocks the connection, so
+  # this setting has no effect there.
+  allow_close: true
+
+# Authentication input mode. Lets players authenticate with a numeric PIN or
+# a per-digit slider grid instead of typing a password. The chosen mode
+# applies to BOTH the register and login dialogs. State for pin/slider entry
+# is tracked server-side per player UUID (never sent to the client as hidden
+# dialog fields).
+auth_mode:
+  # Auth input mode for login and register dialogs.
+  # Options:
+  #   password - standard text input (current behavior, no change)
+  #   pin      - numeric PIN entry using a 3-column button grid (numpad)
+  #   slider   - numeric code entry using per-digit +/- buttons
+  mode: password
+
+  pin:
+    # Number of digits in the PIN. Valid range: 4-8.
+    length: 4
+    # Title of the PIN entry dialog. Supports MiniMessage.
+    title: "<gold>Enter your PIN</gold>"
+    # Label of the confirm button.
+    confirm_button: "<green>Confirm</green>"
+    # Label of the delete-last-digit button.
+    delete_button: "<red>⌫ Delete</red>"
+    # Width in pixels of the numpad buttons (digits, delete, confirm).
+    # Valid range: 1-1024. Lower this to make the numpad more compact.
+    button_width: 100
+
+  slider:
+    # Number of digits in the slider code. Valid range: 4-8.
+    length: 4
+    # Title of the slider entry dialog. Supports MiniMessage.
+    title: "<gold>Enter your code</gold>"
+    # Label of the confirm button.
+    confirm_button: "<green>Confirm</green>"
+    # Width in pixels of the slider buttons (the +/- and digit cells).
+    # Valid range: 1-1024.
+    button_width: 100
+
+# Grace period shown after submitting a register/login so the server has time
+# to finish loading the account before AuthMeBia force-logs the player in.
+# Without this small wait, a force-login can fire before AuthMe's datasource
+# has the freshly-saved account ready, which is what causes "registered but not
+# logged in" right after registering (especially with pin/slider).
+auth_wait:
+  # If true, show the wait dialog (below) during the grace period. If false,
+  # a small built-in safety delay is still applied, just without a dialog.
+  wait: true
+
+  # Controls when the wait dialog is shown relative to the player joining.
+  #
+  # true  (default) - Show the wait dialog BEFORE the player fully spawns
+  #                   (pre-spawn / configuration phase). This happens inside
+  #                   the same blocking phase as the register/login dialogs,
+  #                   so the player sees: [login/register dialog] → [wait dialog]
+  #                   → spawns in-game already authenticated. The post-spawn
+  #                   (postjoin) wait path is suppressed when this is true.
+  #
+  # false           - Show the wait dialog AFTER the player has spawned in-game
+  #                   (post-spawn / postjoin path). The pre-spawn wait is skipped.
+  #                   Use this if dialog.menu is false (post-spawn login mode).
+  #
+  # Rule of thumb: set this to match dialog.menu.
+  #   dialog.menu: true  → auth_wait.prejoin: true   (both pre-spawn)
+  #   dialog.menu: false → auth_wait.prejoin: false  (both post-spawn)
+  prejoin: true
+
+  # Length of the grace period in seconds. Valid range: 1-10.
+  time: 3
+
+  # Title of the wait dialog. Supports MiniMessage.
+  title: "<gold>Please wait</gold>"
+
+  # Body text of the wait dialog. Supports MiniMessage and \n.
+  content: "<gray>Logging you in, please wait...</gray>"
 
 rule:
   # If true, players must accept the server rules (after registering) before
@@ -160,7 +238,8 @@ links:
 captcha:
   # Master switch for the captcha dialog. This plugin generates its own
   # captcha code (it does not read AuthMe's internal captcha state, since
-  # that is not exposed through AuthMe's public API).
+  # that is not exposed through AuthMe's public API). The same caveat is
+  # documented in the source as a `// CAPTCHA NOTE:` comment in AuthMe.java.
   #
   # When enabled, this also requires AuthMe's own captcha.useCaptcha option
   # to be true in AuthMe's config.yml. If AuthMe has it disabled, the
@@ -196,6 +275,100 @@ login_attempts:
 
   # Number of wrong password attempts allowed before the player is kicked.
   max_tries: 5
+
+login_timeout:
+  # If true, kicks or re-shows the dialog if the player hasn't authenticated
+  # within the time limit after the auth dialog is first shown.
+  enabled: false
+
+  # Time in seconds the player has to complete authentication before being
+  # kicked. Set to 0 to disable the kick and just re-show the dialog instead.
+  # Valid range: 10-3600.
+  seconds: 60
+
+  # Kick message shown to the player if they time out. Supports MiniMessage.
+  kick_message: "<red>Authentication timed out. Please reconnect.</red>"
+
+recover:
+  # Admin-forced password reset. Run /bia recover <player> (permission
+  # bia.admin.recover) to flag a player; on their next login (or immediately
+  # if they are online) they are shown this two-field reset dialog instead of
+  # the normal login dialog. The flag is stored per player under
+  # plugins/AuthMeBia/data/<uuid>/player.yml (the same file as the bypass list).
+
+  # Title of the reset dialog. Supports MiniMessage.
+  title: "<gold>Reset Password</gold>"
+
+  # Body text of the reset dialog. Supports MiniMessage.
+  content: "<gray>An admin has requested you set a new password.</gray>"
+
+  # Label for the new password input field.
+  new_password_label: "New password"
+
+  # Label for the confirm password input field.
+  confirm_password_label: "Confirm password"
+
+  # Label of the submit button. Supports MiniMessage.
+  submit_button: "<green>Set Password</green>"
+
+  # Message sent to the player (chat) on successful reset.
+  # Supports MiniMessage and {player}.
+  success_message: "<green>Password updated successfully.</green>"
+
+  # Message sent to the player (chat) if the two fields don't match.
+  # Supports MiniMessage.
+  mismatch_message: "<red>Passwords do not match. Try again.</red>"
+
+email:
+  # Email verification on registration. When enabled, AuthMeBia adds an email
+  # input below the password field; after the player submits the register form
+  # a code is emailed to them and they must enter it in a verify dialog before
+  # the account is created.
+  #
+  # This only takes effect if AuthMe Reloaded itself has email/SMTP configured
+  # (Email.mailAccount + Email.mailPassword + Email.mailSMTP in AuthMe's
+  # config.yml). AuthMeBia reuses AuthMe's SMTP settings to send the code, so
+  # there is no separate SMTP config here. If AuthMe has no email configured,
+  # this feature stays off even when enabled is true.
+  #
+  # Only applies to auth_mode: password (the email field sits under the password
+  # input). PIN/slider modes have no text field and are unaffected.
+  enabled: false
+
+  # Number of digits in the emailed verification code. Valid range: 4-8.
+  code_length: 6
+
+  # Cooldown in seconds before the player can press Resend again.
+  # Valid range: 10-600.
+  resend_cooldown: 60
+
+  # Label of the email input field added under the password.
+  field_label: "Email"
+
+  # Verify dialog title. Supports MiniMessage.
+  verify_title: "<gold>Verify your email</gold>"
+
+  # Verify dialog body. Supports MiniMessage and \n. {email} = the entered
+  # email, {cooldown} = seconds remaining before Resend is available.
+  verify_content: "<gray>A code was sent to {email}.\nResend available in {cooldown}s.</gray>"
+
+  # Label of the code input field in the verify dialog.
+  code_label: "Code"
+
+  # Label of the verify button.
+  verify_button: "<green>Verify</green>"
+
+  # Label of the resend button.
+  resend_button: "<yellow>Resend code</yellow>"
+
+  # Messages (chat). Support MiniMessage and {player}.
+  # Shown when the entered email is not a valid address.
+  invalid_email_message: "<red>Please enter a valid email address.</red>"
+  # Shown when the code could not be emailed (SMTP error).
+  send_failed_message: "<red>Could not send the email. Please contact an admin.</red>"
+
+  # Error shown inline in the verify dialog when the code is wrong.
+  wrong_code_error: "Incorrect code"
 
 ip_ban:
   # If true, temporarily bans an IP address after repeated wrong password

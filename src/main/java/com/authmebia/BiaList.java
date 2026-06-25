@@ -9,18 +9,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Bypass list for players who should never see any AuthMeBia dialog
- * (captcha, register, login, or rule). Players on this list connect
- * straight through and authenticate using AuthMe's own plain /login and
- * /register commands instead.
- * <p>
- * Membership is persisted as one file per player at
- * data/&lt;uuid&gt;/player.yml under the plugin's data folder, containing the
- * player's name, uuid, and the timestamp they were added. The full set of
- * UUIDs is also kept in memory so the per-connection bypass check on
- * {@code AsyncPlayerConnectionConfigureEvent} never has to touch disk.
- */
 public final class BiaList {
 
     private final AuthMeBia plugin;
@@ -47,11 +35,18 @@ public final class BiaList {
             File file = new File(dir, "player.yml");
             if (!file.exists()) continue;
             try {
-                bypassed.add(UUID.fromString(dir.getName()));
+                UUID uuid = UUID.fromString(dir.getName());
+                if (isBypassEntry(file)) bypassed.add(uuid);
             } catch (IllegalArgumentException e) {
                 plugin.getLogger().warning("Skipping bypass list entry with invalid folder name: " + dir.getName());
             }
         }
+    }
+
+    private boolean isBypassEntry(File file) {
+        org.bukkit.configuration.file.YamlConfiguration yaml =
+                org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file);
+        return yaml.getBoolean("bypass", !yaml.contains("recover"));
     }
 
     public boolean isBypassed(UUID uuid) {
@@ -72,10 +67,13 @@ public final class BiaList {
             return false;
         }
 
-        YamlConfiguration yaml = new YamlConfiguration();
+        YamlConfiguration yaml = file.exists()
+                ? YamlConfiguration.loadConfiguration(file)
+                : new YamlConfiguration();
         yaml.set("name", name);
         yaml.set("uuid", uuid.toString());
         yaml.set("added", Instant.now().toString());
+        yaml.set("bypass", true);
 
         try {
             yaml.save(file);
@@ -93,16 +91,29 @@ public final class BiaList {
 
         File file = fileFor(uuid);
         boolean fileExisted = file.exists();
-        if (fileExisted && !file.delete()) {
-            plugin.getLogger().warning("Failed to delete bypass list file for " + uuid);
+        if (!fileExisted) return wasBypassed;
+
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+
+        if (yaml.getBoolean("recover", false)) {
+            yaml.set("bypass", false);
+            yaml.set("added", null);
+            try {
+                yaml.save(file);
+            } catch (IOException e) {
+                plugin.getLogger().warning("Failed to update bypass entry for " + uuid + ": " + e.getMessage());
+            }
+            return true;
         }
 
+        if (!file.delete()) {
+            plugin.getLogger().warning("Failed to delete bypass list file for " + uuid);
+        }
         File dir = file.getParentFile();
         String[] remaining = dir != null ? dir.list() : null;
         if (remaining != null && remaining.length == 0) {
             dir.delete();
         }
-
-        return wasBypassed || fileExisted;
+        return true;
     }
 }
