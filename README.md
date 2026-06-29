@@ -1,20 +1,23 @@
+<div align="center">
 <img src="img/authmebia_logo.png" width="64" alt="authmebia" />
 
 # authmebia
 
-A Addons for AuthMe Reloaded that replaces AuthMe Reloaded's chat-based login and register prompts with native Minecraft dialogs (1.21.6+). Players interact through proper GUI windows instead of typing commands in chat.
+A addon for AuthMe Reloaded that replaces chat-based login and register prompts with native Minecraft dialogs (1.21.6+). Players interact through proper GUI windows instead of typing commands in chat.
 
 [GitHub](https://github.com/Mytai20100/authmebia)
+</div>
 
 ---
 
-## Screenshots
+<details>
+<summary>Screenshots</summary>
 
 <table>
 <tr>
-<td><img src="img/screen_login.png" width="280" alt="Login dialog" /></td>
-<td><img src="img/screen_register.png" width="280" alt="Register dialog" /></td>
-<td><img src="img/screen_rule.png" width="280" alt="Rules dialog" /></td>
+<td><img src="img/screen_login.png" width="400" alt="Login dialog" /></td>
+<td><img src="img/screen_register.png" width="400" alt="Register dialog" /></td>
+<td><img src="img/screen_rule.png" width="400" alt="Rules dialog" /></td>
 </tr>
 <tr>
 <td align="center">Login</td>
@@ -22,6 +25,8 @@ A Addons for AuthMe Reloaded that replaces AuthMe Reloaded's chat-based login an
 <td align="center">Rules</td>
 </tr>
 </table>
+
+</details>
 
 ---
 
