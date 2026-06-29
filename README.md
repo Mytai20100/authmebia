@@ -11,20 +11,23 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 ---
 
 <details>
-<summary>Screenshots</summary>
+<summary>Login</summary>
 
-<table>
-<tr>
-<td><img src="img/screen_login.png" width="400" alt="Login dialog" /></td>
-<td><img src="img/screen_register.png" width="400" alt="Register dialog" /></td>
-<td><img src="img/screen_rule.png" width="400" alt="Rules dialog" /></td>
-</tr>
-<tr>
-<td align="center">Login</td>
-<td align="center">Register</td>
-<td align="center">Rules</td>
-</tr>
-</table>
+![Login dialog](img/screen_login.png)
+
+</details>
+
+<details>
+<summary>Register</summary>
+
+![Register dialog](img/screen_register.png)
+
+</details>
+
+<details>
+<summary>Rules</summary>
+
+![Rules dialog](img/screen_rule.png)
 
 </details>
 
