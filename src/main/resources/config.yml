@@ -370,6 +370,46 @@ email:
   # Error shown inline in the verify dialog when the code is wrong.
   wrong_code_error: "Incorrect code"
 
+totp_2fa:
+  # If true, players who have TOTP/2FA enabled in AuthMe will be shown a
+  # two-factor authentication dialog after entering their password.
+  # Requires AuthMe to have TOTP support (5.6+).
+  enabled: false
+
+  # Title of the 2FA dialog. Supports MiniMessage.
+  title: "<gold>Two-Factor Authentication</gold>"
+
+  # Body text of the 2FA dialog. Supports MiniMessage and \n.
+  content: "<gray>Enter your 6-digit authenticator app code:</gray>"
+
+  # Label of the code input field.
+  input_label: "Authenticator code"
+
+  # Label of the verify button. Supports MiniMessage.
+  submit_button: "<green>Verify</green>"
+
+  # Error shown inline when the code is wrong.
+  wrong_code_error: "Invalid code"
+
+# Custom dialog screens that admins can define and show to players.
+# Show a screen with: /bia screen <id> [player]
+# Buttons support actions: close, open_url, copy.
+# Title and content support MiniMessage tags.
+# Use {player} in title/content as a placeholder for the player's name.
+custom_screens:
+  - id: example
+    title: "<gold>Server Notice</gold>"
+    content: "<gray>Welcome to the server, {player}!\nHave fun playing.</gray>"
+    allow_close: true
+    button_width: 200
+    buttons:
+      - label: "<green>OK</green>"
+        action: close
+      - label: "<#5865F2>Discord</#5865F2>"
+        action: open_url
+        value: "https://discord.gg/abc"
+        width: 200
+
 ip_ban:
   # If true, temporarily bans an IP address after repeated wrong password
   # attempts across login sessions from that IP (spam/brute-force

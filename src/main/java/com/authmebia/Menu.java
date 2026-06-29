@@ -291,7 +291,12 @@ public class Menu {
             await(latch);
             if (kicked.get()) return false;
             if (disconnect.get()) return false;
-            if (success.get()) return true;
+            if (success.get()) {
+                if (cfg.totp2faEnabled() && authMe.hasTotpEnabled(name)) {
+                    return show2FABlocking(conn, name, cfg, lang, authMe);
+                }
+                return true;
+            }
         }
         return false;
     }
@@ -308,6 +313,9 @@ public class Menu {
 
             if (authMe.checkPassword(name, code)) {
                 ipGuard.clearFailures(ip);
+                if (cfg.totp2faEnabled() && authMe.hasTotpEnabled(name)) {
+                    return show2FABlocking(conn, name, cfg, lang, authMe);
+                }
                 return true;
             }
 
@@ -594,7 +602,11 @@ public class Menu {
                 return;
             }
             ipGuard.clearFailures(ip);
-            authMe.login(player);
+            if (cfg.totp2faEnabled() && authMe.hasTotpEnabled(name)) {
+                show2FAIngame(player, cfg, lang, authMe, () -> authMe.login(player));
+            } else {
+                authMe.login(player);
+            }
         };
         Runnable onLogout = () -> player.kick(lang.disconnectLogout(name, ip));
         if (mode == AuthMode.PIN) {
@@ -687,7 +699,11 @@ public class Menu {
                                     return;
                                 }
                                 ipGuard.clearFailures(ip);
-                                authMe.login(p);
+                                if (cfg.totp2faEnabled() && authMe.hasTotpEnabled(p.getName())) {
+                                    show2FAIngame(p, cfg, lang, authMe, () -> authMe.login(p));
+                                } else {
+                                    authMe.login(p);
+                                }
                             })),
                             btn(cfg, cfg.logoutButton(), logoutCb)))
             ));
@@ -788,5 +804,208 @@ public class Menu {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    // --- 2FA (TOTP) ---
+
+    public static boolean show2FABlocking(PlayerConfigurationConnection conn, String name, Cfg cfg, Lang lang, AuthMe authMe) {
+        AtomicReference<String> error = new AtomicReference<>(null);
+
+        while (conn.isConnected()) {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicBoolean success = new AtomicBoolean(false);
+            AtomicBoolean disconnect = new AtomicBoolean(false);
+
+            String inputLabel = error.get() != null
+                    ? cfg.totp2faInputLabel() + "  [" + error.get() + "]"
+                    : cfg.totp2faInputLabel();
+
+            DialogActionCallback verifyCb = (r, a) -> {
+                try {
+                    String code = r.getText("totp_code");
+                    if (code != null && authMe.checkTotpCode(name, code.trim())) {
+                        success.set(true);
+                    } else {
+                        error.set(cfg.totp2faWrongCodeError());
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            };
+
+            DialogActionCallback logoutCb = (r, a) -> { disconnect.set(true); latch.countDown(); };
+
+            conn.getAudience().showDialog(Dialog.create(d -> d
+                    .empty()
+                    .base(buildBase(cfg.totp2faTitle(), cfg.totp2faContent(), false,
+                            List.of(DialogInput.text("totp_code", Component.text(inputLabel))
+                                    .maxLength(16).width(cfg.inputWidth()).build())))
+                    .type(buildType(cfg, name,
+                            List.of(btn(cfg, cfg.totp2faSubmitButton(), verifyCb)),
+                            btn(cfg, cfg.logoutButton(), logoutCb)))
+            ));
+
+            await(latch);
+            if (disconnect.get()) return false;
+            if (success.get()) return true;
+        }
+        return false;
+    }
+
+    public static void show2FAIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, Runnable onSuccess) {
+        show2FAIngame(player, cfg, lang, authMe, onSuccess, null);
+    }
+
+    private static void show2FAIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, Runnable onSuccess, String error) {
+        try {
+            String name = player.getName();
+            String ip = ipOf(player);
+            String inputLabel = error != null
+                    ? cfg.totp2faInputLabel() + "  [" + error + "]"
+                    : cfg.totp2faInputLabel();
+
+            player.showDialog(Dialog.create(d -> d
+                    .empty()
+                    .base(buildBase(cfg.totp2faTitle(), cfg.totp2faContent(), false,
+                            List.of(DialogInput.text("totp_code", Component.text(inputLabel))
+                                    .maxLength(16).width(cfg.inputWidth()).build())))
+                    .type(buildType(cfg, name,
+                            List.of(btn(cfg, cfg.totp2faSubmitButton(), (r, a) -> {
+                                if (!(a instanceof Player p)) return;
+                                String code = r.getText("totp_code");
+                                if (code != null && authMe.checkTotpCode(name, code.trim())) {
+                                    onSuccess.run();
+                                } else {
+                                    show2FAIngame(p, cfg, lang, authMe, onSuccess, cfg.totp2faWrongCodeError());
+                                }
+                            })),
+                            btn(cfg, cfg.logoutButton(), (r, a) -> {
+                                if (a instanceof Player p) p.kick(lang.disconnectLogout(name, ip));
+                            })))
+            ));
+        } catch (NoClassDefFoundError ignored) {}
+    }
+
+    // --- Debug: captcha show ---
+
+    public static void showCaptchaIngame(Player player, Cfg cfg, Lang lang, Captcha captcha) {
+        showCaptchaIngameLoop(player, cfg, lang, captcha, captcha.generate(cfg.captchaLength()), null);
+    }
+
+    private static void showCaptchaIngameLoop(Player player, Cfg cfg, Lang lang, Captcha captcha, String code, String error) {
+        try {
+            String inputLabel = error != null
+                    ? cfg.captchaInputLabel() + "  [" + error + "]"
+                    : cfg.captchaInputLabel();
+
+            player.showDialog(Dialog.create(d -> d
+                    .empty()
+                    .base(buildBase(cfg.captchaTitle(), cfg.captchaContent(code), false,
+                            List.of(DialogInput.text("code", Component.text(inputLabel))
+                                    .maxLength(16).width(cfg.inputWidth()).build())))
+                    .type(DialogType.multiAction(
+                            List.of(btn(cfg, cfg.captchaSubmitButton(), (r, a) -> {
+                                if (!(a instanceof Player p)) return;
+                                String typed = r.getText("code");
+                                if (captcha.matches(typed, code)) {
+                                    p.sendMessage(net.kyori.adventure.text.Component.text(
+                                            "[debug] Captcha verified!", net.kyori.adventure.text.format.NamedTextColor.GREEN));
+                                } else {
+                                    showCaptchaIngameLoop(p, cfg, lang, captcha,
+                                            captcha.generate(cfg.captchaLength()),
+                                            lang.errorCaptchaIncorrect());
+                                }
+                            })),
+                            null, 1))
+            ));
+        } catch (NoClassDefFoundError ignored) {}
+    }
+
+    // --- Debug: email verify show ---
+
+    public static void showEmailVerifyDebugIngame(Player player, Cfg cfg, Lang lang) {
+        final String dummyEmail = "debug@example.com";
+        final String debugCode = "123456";
+        showEmailVerifyDebugLoop(player, cfg, lang, dummyEmail, debugCode, null);
+    }
+
+    private static void showEmailVerifyDebugLoop(Player player, Cfg cfg, Lang lang,
+                                                  String email, String code, String codeErr) {
+        try {
+            String codeLabel = codeErr != null
+                    ? cfg.emailCodeLabel() + "  [" + codeErr + "]"
+                    : cfg.emailCodeLabel();
+
+            player.showDialog(Dialog.create(d -> d
+                    .empty()
+                    .base(buildBase(cfg.emailVerifyTitle(), cfg.emailVerifyContent(email, 0), false,
+                            List.of(DialogInput.text("code", Component.text(codeLabel))
+                                    .maxLength(16).width(cfg.inputWidth()).build())))
+                    .type(DialogType.multiAction(
+                            List.of(
+                                    btn(cfg, cfg.emailVerifyButton(), (r, a) -> {
+                                        if (!(a instanceof Player p)) return;
+                                        String typed = r.getText("code");
+                                        if (code.equals(typed == null ? null : typed.trim())) {
+                                            p.sendMessage(net.kyori.adventure.text.Component.text(
+                                                    "[debug] Email verified!", net.kyori.adventure.text.format.NamedTextColor.GREEN));
+                                        } else {
+                                            p.sendMessage(net.kyori.adventure.text.Component.text(
+                                                    "[debug] Wrong code. Debug code is: " + code,
+                                                    net.kyori.adventure.text.format.NamedTextColor.RED));
+                                            showEmailVerifyDebugLoop(p, cfg, lang, email, code, cfg.emailWrongCodeError());
+                                        }
+                                    }),
+                                    btn(cfg, cfg.emailResendButton(), (r, a) -> {
+                                        if (!(a instanceof Player p)) return;
+                                        p.sendMessage(net.kyori.adventure.text.Component.text(
+                                                "[debug] Resend clicked (debug code: " + code + ")",
+                                                net.kyori.adventure.text.format.NamedTextColor.YELLOW));
+                                        showEmailVerifyDebugLoop(p, cfg, lang, email, code, null);
+                                    })
+                            ),
+                            null, 1))
+            ));
+        } catch (NoClassDefFoundError ignored) {}
+    }
+
+    // --- Custom screens ---
+
+    public static void showCustomScreen(Player player, CustomScreen screen, String playerName) {
+        try {
+            List<ActionButton> buttons = new ArrayList<>();
+            for (CustomScreen.Button btn : screen.buttons()) {
+                buttons.add(switch (btn.action()) {
+                    case OPEN_URL -> ActionButton.builder(btn.label())
+                            .width(btn.width())
+                            .action(DialogAction.staticAction(
+                                    net.kyori.adventure.text.event.ClickEvent.openUrl(btn.value())))
+                            .build();
+                    case COPY -> ActionButton.builder(btn.label())
+                            .width(btn.width())
+                            .action(DialogAction.staticAction(
+                                    net.kyori.adventure.text.event.ClickEvent.copyToClipboard(btn.value())))
+                            .build();
+                    case CLOSE -> ActionButton.builder(btn.label())
+                            .width(btn.width())
+                            .action(DialogAction.customClick((r, a) -> {}, ClickCallback.Options.builder().build()))
+                            .build();
+                });
+            }
+
+            if (buttons.isEmpty()) {
+                buttons.add(ActionButton.builder(Component.text("OK"))
+                        .width(screen.buttonWidth())
+                        .action(DialogAction.customClick((r, a) -> {}, ClickCallback.Options.builder().build()))
+                        .build());
+            }
+
+            Component title = screen.title() != null ? screen.title() : Component.text("Notice");
+            player.showDialog(Dialog.create(d -> d
+                    .empty()
+                    .base(buildBase(title, screen.content(), screen.allowClose(), List.of()))
+                    .type(DialogType.multiAction(buttons, null, 1))
+            ));
+        } catch (NoClassDefFoundError ignored) {}
     }
 }

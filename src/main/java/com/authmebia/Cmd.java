@@ -1,7 +1,6 @@
 package com.authmebia;
 
 import com.mojang.brigadier.Command;
-import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.Component;
@@ -58,13 +57,28 @@ public class Cmd {
                 .then(Commands.literal("debug")
                     .requires(source -> source.getSender().isOp())
                     .then(Commands.argument("feature", StringArgumentType.word())
-                        .then(Commands.argument("value", BoolArgumentType.bool())
+                        .then(Commands.argument("value", StringArgumentType.word())
                             .executes(ctx -> {
                                 debug(
                                     ctx.getSource().getSender(),
                                     StringArgumentType.getString(ctx, "feature"),
-                                    BoolArgumentType.getBool(ctx, "value")
+                                    StringArgumentType.getString(ctx, "value")
                                 );
+                                return Command.SINGLE_SUCCESS;
+                            }))))
+                .then(Commands.literal("screen")
+                    .requires(source -> source.getSender().isOp())
+                    .then(Commands.argument("id", StringArgumentType.word())
+                        .executes(ctx -> {
+                            showScreen(ctx.getSource().getSender(),
+                                StringArgumentType.getString(ctx, "id"), null);
+                            return Command.SINGLE_SUCCESS;
+                        })
+                        .then(Commands.argument("player", StringArgumentType.word())
+                            .executes(ctx -> {
+                                showScreen(ctx.getSource().getSender(),
+                                    StringArgumentType.getString(ctx, "id"),
+                                    StringArgumentType.getString(ctx, "player"));
                                 return Command.SINGLE_SUCCESS;
                             }))))
                 .executes(ctx -> { help(ctx.getSource().getSender()); return Command.SINGLE_SUCCESS; })
@@ -96,8 +110,10 @@ public class Cmd {
         sb.append("/bia rm <player>       - Remove a player from the dialog bypass list\n");
         sb.append("/bia recover <player>  - Force a password reset on the player's next login\n");
         if (op) {
-            sb.append("/bia debug <feature> <true|false>  - Test a feature (OP only)\n");
+            sb.append("/bia debug <feature> <true|false|show>  - Test a feature (OP only)\n");
             sb.append("  Features: captcha, email, register, login, wait, recover, rule\n");
+            sb.append("  Use 'show' with captcha/email to preview the dialog GUI\n");
+            sb.append("/bia screen <id> [player]  - Show a custom screen to a player (OP only)\n");
         }
         sb.append("/bia help              - Show this help");
         sender.sendMessage(Component.text(sb.toString()));
@@ -118,12 +134,23 @@ public class Cmd {
         ));
     }
 
-    private void debug(org.bukkit.command.CommandSender sender, String feature, boolean value) {
+    private void debug(org.bukkit.command.CommandSender sender, String feature, String rawValue) {
         AuthMe authMe = plugin.authMeListener();
         Cfg cfg = plugin.cfg();
+        boolean isShow = "show".equalsIgnoreCase(rawValue);
+        boolean value = Boolean.parseBoolean(rawValue);
 
         switch (feature.toLowerCase()) {
             case "captcha" -> {
+                if (isShow) {
+                    if (!(sender instanceof Player p)) {
+                        sender.sendMessage(Component.text("[debug] Must be a player to preview captcha GUI.", NamedTextColor.RED));
+                        return;
+                    }
+                    sender.sendMessage(Component.text("[debug] Showing captcha dialog...", NamedTextColor.YELLOW));
+                    runOnPlayer(p, () -> Menu.showCaptchaIngame(p, cfg, plugin.lang(), plugin.captcha()));
+                    return;
+                }
                 if (authMe != null) {
                     authMe.overrideCachedAuthMeCaptchaEnabled(value);
                     sender.sendMessage(Component.text(
@@ -136,6 +163,15 @@ public class Cmd {
                 }
             }
             case "email" -> {
+                if (isShow) {
+                    if (!(sender instanceof Player p)) {
+                        sender.sendMessage(Component.text("[debug] Must be a player to preview email GUI.", NamedTextColor.RED));
+                        return;
+                    }
+                    sender.sendMessage(Component.text("[debug] Showing email verify dialog (dummy email, code: 123456)...", NamedTextColor.YELLOW));
+                    runOnPlayer(p, () -> Menu.showEmailVerifyDebugIngame(p, cfg, plugin.lang()));
+                    return;
+                }
                 if (authMe != null) {
                     authMe.overrideCachedEmailEnabled(value);
                     sender.sendMessage(Component.text(
@@ -225,6 +261,36 @@ public class Cmd {
             default -> sender.sendMessage(Component.text(
                 "[debug] Unknown feature '" + feature + "'. Valid features: captcha, email, register, login, wait, recover, rule",
                 NamedTextColor.RED));
+        }
+    }
+
+    private void showScreen(org.bukkit.command.CommandSender sender, String id, String targetName) {
+        CustomScreen screen = plugin.cfg().customScreen(id);
+        if (screen == null) {
+            sender.sendMessage(Component.text(
+                "No custom screen with id '" + id + "' found in config.yml.", NamedTextColor.RED));
+            return;
+        }
+
+        Player target;
+        if (targetName != null) {
+            target = plugin.getServer().getPlayerExact(targetName);
+            if (target == null) {
+                sender.sendMessage(Component.text("Player '" + targetName + "' is not online.", NamedTextColor.RED));
+                return;
+            }
+        } else {
+            if (!(sender instanceof Player p)) {
+                sender.sendMessage(Component.text("Console must specify a target player: /bia screen <id> <player>", NamedTextColor.RED));
+                return;
+            }
+            target = p;
+        }
+
+        Player finalTarget = target;
+        runOnPlayer(finalTarget, () -> Menu.showCustomScreen(finalTarget, screen, finalTarget.getName()));
+        if (sender != target) {
+            sender.sendMessage(Component.text("Screen '" + id + "' shown to " + target.getName() + ".", NamedTextColor.GREEN));
         }
     }
 

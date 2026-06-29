@@ -433,6 +433,81 @@ public class Cfg {
         return value != null ? value.toString() : fallback;
     }
 
+    // --- TOTP 2FA ---
+
+    public boolean totp2faEnabled() {
+        return config.getBoolean("totp_2fa.enabled", false);
+    }
+
+    public Component totp2faTitle() {
+        return parse(config.getString("totp_2fa.title", "<gold>Two-Factor Authentication</gold>"));
+    }
+
+    public Component totp2faContent() {
+        return parse(config.getString("totp_2fa.content", "<gray>Enter your 6-digit authenticator code:</gray>"));
+    }
+
+    public String totp2faInputLabel() {
+        return config.getString("totp_2fa.input_label", "Authenticator code");
+    }
+
+    public Component totp2faSubmitButton() {
+        return parse(config.getString("totp_2fa.submit_button", "<green>Verify</green>"));
+    }
+
+    public String totp2faWrongCodeError() {
+        return config.getString("totp_2fa.wrong_code_error", "Invalid code");
+    }
+
+    // --- Custom screens ---
+
+    public CustomScreen customScreen(String id) {
+        for (Map<?, ?> map : config.getMapList("custom_screens")) {
+            if (id.equalsIgnoreCase(readString(map, "id", ""))) {
+                return buildCustomScreen(map);
+            }
+        }
+        return null;
+    }
+
+    public List<CustomScreen> customScreens() {
+        List<CustomScreen> result = new ArrayList<>();
+        for (Map<?, ?> map : config.getMapList("custom_screens")) {
+            CustomScreen s = buildCustomScreen(map);
+            if (s != null) result.add(s);
+        }
+        return result;
+    }
+
+    private CustomScreen buildCustomScreen(Map<?, ?> map) {
+        String id = readString(map, "id", "");
+        if (id.isBlank()) return null;
+        Component title = parse(readString(map, "title", "Notice"));
+        if (title == null) title = net.kyori.adventure.text.Component.text("Notice");
+        Component content = parse(readString(map, "content", ""));
+        boolean allowClose = readBoolean(map, "allow_close", true);
+        int defaultWidth = clampWidth(readInt(map, "button_width", mainButtonWidth()));
+
+        List<CustomScreen.Button> buttons = new ArrayList<>();
+        Object rawBtns = map.get("buttons");
+        if (rawBtns instanceof List<?> btnList) {
+            for (Object o : btnList) {
+                if (!(o instanceof Map<?, ?> bm)) continue;
+                Component label = parse(readString(bm, "label", "OK"));
+                if (label == null) label = net.kyori.adventure.text.Component.text("OK");
+                CustomScreen.Button.Action action = switch (readString(bm, "action", "close").toLowerCase()) {
+                    case "open_url" -> CustomScreen.Button.Action.OPEN_URL;
+                    case "copy"     -> CustomScreen.Button.Action.COPY;
+                    default         -> CustomScreen.Button.Action.CLOSE;
+                };
+                String value = readString(bm, "value", "");
+                int width = clampWidth(readInt(bm, "width", defaultWidth));
+                buttons.add(new CustomScreen.Button(label, action, value, width));
+            }
+        }
+        return new CustomScreen(id, title, content, allowClose, defaultWidth, buttons);
+    }
+
     public boolean copyDefaultsIfMissing(String name) {
         return new java.io.File(plugin.getDataFolder(), name).exists();
     }

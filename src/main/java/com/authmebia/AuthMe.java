@@ -49,6 +49,10 @@ public class AuthMe implements Listener {
     private Method authSetEmail;
     final Map<UUID, String> pendingEmail = new ConcurrentHashMap<>();
 
+    private Object totpAuthenticator;
+    private Method totpCheckCode;
+    private Method authGetTotpKey;
+
     private volatile boolean cachedBlindEffectEnabled = false;
     private volatile boolean cachedAuthMeCaptchaEnabled = false;
     private volatile Boolean debugCaptchaOverride = null;
@@ -114,6 +118,25 @@ public class AuthMe implements Listener {
         } catch (Throwable t) {
             plugin.getLogger().info("AuthMe email reflection unavailable; email verification disabled (" + t + ")");
             emailService = null;
+        }
+
+        try {
+            Object authMePlugin = api.getClass().getMethod("getPlugin").invoke(api);
+            java.lang.reflect.Field injField = authMePlugin.getClass().getDeclaredField("injector");
+            injField.setAccessible(true);
+            Object injector = injField.get(authMePlugin);
+            Method getSingleton = Class.forName("ch.jalu.injector.Injector").getMethod("getSingleton", Class.class);
+
+            Class<?> totpClass = Class.forName("fr.xephi.authme.security.totp.TotpAuthenticator");
+            totpAuthenticator = getSingleton.invoke(injector, totpClass);
+
+            // checkCode(PlayerAuth, String) - verified against AuthMe 6.0.0-SNAPSHOT jar
+            Class<?> playerAuthClass = Class.forName("fr.xephi.authme.data.auth.PlayerAuth");
+            totpCheckCode = totpClass.getMethod("checkCode", playerAuthClass, String.class);
+            authGetTotpKey = playerAuthClass.getMethod("getTotpKey");
+        } catch (Throwable t) {
+            plugin.getLogger().info("AuthMe TOTP reflection unavailable; 2FA dialog disabled (" + t + ")");
+            totpAuthenticator = null;
         }
     }
 
@@ -614,5 +637,29 @@ public class AuthMe implements Listener {
 
     public void overrideCachedEmailEnabled(boolean value) {
         debugEmailOverride = value;
+    }
+
+    public boolean hasTotpEnabled(String name) {
+        if (totpAuthenticator == null || dataSource == null || dsGetAuth == null || authGetTotpKey == null) return false;
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(java.util.Locale.ROOT));
+            if (auth == null) return false;
+            String totpKey = (String) authGetTotpKey.invoke(auth);
+            return totpKey != null && !totpKey.isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean checkTotpCode(String name, String code) {
+        if (totpAuthenticator == null || dataSource == null || dsGetAuth == null || totpCheckCode == null) return false;
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(java.util.Locale.ROOT));
+            if (auth == null) return false;
+            // checkCode(PlayerAuth, String) - AuthMe 6.0.0-SNAPSHOT API
+            return (boolean) totpCheckCode.invoke(totpAuthenticator, auth, code);
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
