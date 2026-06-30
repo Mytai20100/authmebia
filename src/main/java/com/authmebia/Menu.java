@@ -11,6 +11,8 @@ import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.audience.Audience;
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickCallback;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -65,7 +67,7 @@ public class Menu {
                                     DialogInput.text("code", Component.text(inputLabel)).maxLength(16).width(cfg.inputWidth()).build()
                             )))
                     .type(DialogType.multiAction(
-                            List.of(btn(cfg, cfg.captchaSubmitButton(), submit)),
+                            List.of(btn(cfg, cfg.captchaSubmitButton(), cfg.captchaSubmitSound(), submit)),
                             null, 1))
             ));
 
@@ -94,7 +96,7 @@ public class Menu {
             AtomicReference<String> emailRef = new AtomicReference<>(null);
             AtomicBoolean disconnect = new AtomicBoolean(false);
 
-            String passLabel = error.get() != null ? "Password  [" + error.get() + "]" : "Password";
+            String passLabel = error.get() != null ? cfg.passwordLabel() + "  [" + error.get() + "]" : cfg.passwordLabel();
             String emailLabel = emailErr.get() != null
                     ? cfg.emailFieldLabel() + "  [" + emailErr.get() + "]" : cfg.emailFieldLabel();
 
@@ -134,7 +136,7 @@ public class Menu {
 
             List<DialogInput> inputs = new ArrayList<>();
             inputs.add(DialogInput.text("password", Component.text(passLabel)).maxLength(64).width(cfg.inputWidth()).build());
-            inputs.add(DialogInput.text("confirm", Component.text("Confirm Password")).maxLength(64).width(cfg.inputWidth()).build());
+            inputs.add(DialogInput.text("confirm", Component.text(cfg.confirmPasswordLabel())).maxLength(64).width(cfg.inputWidth()).build());
             if (emailActive) {
                 inputs.add(DialogInput.text("email", Component.text(emailLabel)).maxLength(254).width(cfg.inputWidth()).build());
             }
@@ -143,8 +145,8 @@ public class Menu {
                     .empty()
                     .base(buildBase(cfg.registerTitle(playerName), cfg.registerContent(playerName), false, inputs))
                     .type(buildType(cfg, playerName,
-                            List.of(btn(cfg, cfg.submitRegisterButton(), submit)),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            List.of(btn(cfg, cfg.submitRegisterButton(), cfg.registerSubmitSound(), submit)),
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
 
             await(latch);
@@ -179,6 +181,7 @@ public class Menu {
 
             int remaining = (int) Math.max(0, cfg.emailResendCooldown() - (System.currentTimeMillis() - lastSent[0]) / 1000);
             String codeLabel = error.get() != null ? cfg.emailCodeLabel() + "  [" + error.get() + "]" : cfg.emailCodeLabel();
+            Component resendBtnLabel = remaining > 0 ? cfg.emailResendButtonCooldown(remaining) : cfg.emailResendButton();
 
             DialogActionCallback verifyCb = (r, a) -> {
                 try {
@@ -200,8 +203,9 @@ public class Menu {
                     .base(buildBase(cfg.emailVerifyTitle(), cfg.emailVerifyContent(email, remaining), false,
                             List.of(DialogInput.text("code", Component.text(codeLabel)).maxLength(16).width(cfg.inputWidth()).build())))
                     .type(buildType(cfg, name,
-                            List.of(btn(cfg, cfg.emailVerifyButton(), verifyCb), btn(cfg, cfg.emailResendButton(), resendCb)),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            List.of(btn(cfg, cfg.emailVerifyButton(), cfg.emailVerifySound(), verifyCb),
+                                    btn(cfg, resendBtnLabel, cfg.emailResendSound(), resendCb)),
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
 
             await(latch);
@@ -247,7 +251,7 @@ public class Menu {
             AtomicBoolean disconnect = new AtomicBoolean(false);
             AtomicBoolean kicked = new AtomicBoolean(false);
 
-            String passLabel = error.get() != null ? "Password  [" + error.get() + "]" : "Password";
+            String passLabel = error.get() != null ? cfg.loginPasswordLabel() + "  [" + error.get() + "]" : cfg.loginPasswordLabel();
 
             DialogActionCallback loginCb = (DialogResponseView r, Audience a) -> {
                 try {
@@ -284,8 +288,8 @@ public class Menu {
                                     DialogInput.text("password", Component.text(passLabel)).maxLength(64).width(cfg.inputWidth()).build()
                             )))
                     .type(buildType(cfg, name,
-                            List.of(btn(cfg, cfg.submitLoginButton(), loginCb)),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            List.of(btn(cfg, cfg.submitLoginButton(), cfg.loginSubmitSound(), loginCb)),
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
 
             await(latch);
@@ -370,8 +374,8 @@ public class Menu {
                                     DialogInput.text("confirm_password", Component.text(cfg.recoverConfirmPasswordLabel())).maxLength(64).width(cfg.inputWidth()).build()
                             )))
                     .type(buildType(cfg, playerName,
-                            List.of(btn(cfg, cfg.recoverSubmitButton(), submit)),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            List.of(btn(cfg, cfg.recoverSubmitButton(), cfg.recoverSubmitSound(), submit)),
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
 
             await(latch);
@@ -408,7 +412,7 @@ public class Menu {
                                             .build()
                             )))
                     .type(buildType(cfg, playerName,
-                            List.of(btn(cfg, cfg.ruleAgreeButton(), agreeCb)),
+                            List.of(btn(cfg, cfg.ruleAgreeButton(), cfg.ruleAgreeSound(), agreeCb)),
                             null))
             ));
 
@@ -453,11 +457,11 @@ public class Menu {
                 if (a instanceof Player p) p.kick(lang.disconnectLogout(p.getName(), ip));
             };
 
-            String passLabel = lastError.get() != null ? "Password  [" + lastError.get() + "]" : "Password";
+            String passLabel = lastError.get() != null ? cfg.passwordLabel() + "  [" + lastError.get() + "]" : cfg.passwordLabel();
 
             List<DialogInput> inputs = new ArrayList<>();
             inputs.add(DialogInput.text("password", Component.text(passLabel)).maxLength(64).width(cfg.inputWidth()).build());
-            inputs.add(DialogInput.text("confirm", Component.text("Confirm Password")).maxLength(64).width(cfg.inputWidth()).build());
+            inputs.add(DialogInput.text("confirm", Component.text(cfg.confirmPasswordLabel())).maxLength(64).width(cfg.inputWidth()).build());
             if (emailActive) {
                 inputs.add(DialogInput.text("email", Component.text(cfg.emailFieldLabel())).maxLength(254).width(cfg.inputWidth()).build());
             }
@@ -466,7 +470,7 @@ public class Menu {
                     .empty()
                     .base(buildBase(cfg.registerTitle(playerName), cfg.registerContent(playerName), cfg.dialogAllowClose(), inputs))
                     .type(buildType(cfg, playerName,
-                            List.of(btn(cfg, cfg.submitRegisterButton(), (r, a) -> {
+                            List.of(btn(cfg, cfg.submitRegisterButton(), cfg.registerSubmitSound(), (r, a) -> {
                                 if (!(a instanceof Player p)) return;
                                 String pass = r.getText("password");
                                 String confirm = r.getText("confirm");
@@ -494,7 +498,7 @@ public class Menu {
                                 // register+await off-tick to avoid freezing it.
                                 authMe.runAsync(() -> authMe.registerAndLogin(p, pass));
                             })),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
         } catch (NoClassDefFoundError ignored) {}
     }
@@ -536,19 +540,20 @@ public class Menu {
     private static void showEmailVerifyIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, String codeErr) {
         java.util.UUID uuid = player.getUniqueId();
         EmailSession s = EMAIL_SESSIONS.get(uuid);
-        if (s == null) return; // session cleared (quit / completed)
+        if (s == null) return;
         int remaining = (int) Math.max(0, cfg.emailResendCooldown() - (System.currentTimeMillis() - s.lastSent) / 1000);
         String codeLabel = codeErr != null ? cfg.emailCodeLabel() + "  [" + codeErr + "]" : cfg.emailCodeLabel();
+        Component resendBtnLabel = remaining > 0 ? cfg.emailResendButtonCooldown(remaining) : cfg.emailResendButton();
         String ip = player.getAddress() != null && player.getAddress().getAddress() != null
                 ? player.getAddress().getAddress().getHostAddress() : null;
         try {
             player.showDialog(Dialog.create(d -> d
                     .empty()
-                                    .base(buildBase(cfg.emailVerifyTitle(), cfg.emailVerifyContent(s.email, remaining), false,
+                    .base(buildBase(cfg.emailVerifyTitle(), cfg.emailVerifyContent(s.email, remaining), false,
                             List.of(DialogInput.text("code", Component.text(codeLabel)).maxLength(16).width(cfg.inputWidth()).build())))
                     .type(buildType(cfg, player.getName(),
                             List.of(
-                                    btn(cfg, cfg.emailVerifyButton(), (r, a) -> {
+                                    btn(cfg, cfg.emailVerifyButton(), cfg.emailVerifySound(), (r, a) -> {
                                         if (!(a instanceof Player p)) return;
                                         String typed = r.getText("code");
                                         if (s.code.equals(typed == null ? null : typed.trim())) {
@@ -559,7 +564,7 @@ public class Menu {
                                             showEmailVerifyIngame(p, cfg, lang, authMe, cfg.emailWrongCodeError());
                                         }
                                     }),
-                                    btn(cfg, cfg.emailResendButton(), (r, a) -> {
+                                    btn(cfg, resendBtnLabel, cfg.emailResendSound(), (r, a) -> {
                                         if (!(a instanceof Player p)) return;
                                         int rem = (int) Math.max(0, cfg.emailResendCooldown() - (System.currentTimeMillis() - s.lastSent) / 1000);
                                         if (rem <= 0) {
@@ -569,7 +574,7 @@ public class Menu {
                                         }
                                         showEmailVerifyIngame(p, cfg, lang, authMe, null);
                                     })),
-                            btn(cfg, cfg.logoutButton(), (r, a) -> {
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), (r, a) -> {
                                 EMAIL_SESSIONS.remove(uuid);
                                 if (a instanceof Player p) p.kick(lang.disconnectLogout(p.getName(), ip));
                             })))
@@ -633,7 +638,7 @@ public class Menu {
                                     DialogInput.text("confirm_password", Component.text(cfg.recoverConfirmPasswordLabel())).maxLength(64).width(cfg.inputWidth()).build()
                             )))
                     .type(buildType(cfg, player.getName(),
-                            List.of(btn(cfg, cfg.recoverSubmitButton(), (r, a) -> {
+                            List.of(btn(cfg, cfg.recoverSubmitButton(), cfg.recoverSubmitSound(), (r, a) -> {
                                 if (!(a instanceof Player p)) return;
                                 String pass = r.getText("new_password");
                                 String confirm = r.getText("confirm_password");
@@ -682,10 +687,10 @@ public class Menu {
                     .empty()
                     .base(buildBase(cfg.loginTitle(playerName), cfg.loginContent(playerName), cfg.dialogAllowClose(),
                             List.of(
-                                    DialogInput.text("password", Component.text("Password")).maxLength(64).width(cfg.inputWidth()).build()
+                                    DialogInput.text("password", Component.text(cfg.loginPasswordLabel())).maxLength(64).width(cfg.inputWidth()).build()
                             )))
                     .type(buildType(cfg, playerName,
-                            List.of(btn(cfg, cfg.submitLoginButton(), (r, a) -> {
+                            List.of(btn(cfg, cfg.submitLoginButton(), cfg.loginSubmitSound(), (r, a) -> {
                                 if (!(a instanceof Player p)) return;
                                 String pass = r.getText("password");
                                 if (pass == null || pass.isBlank() || !authMe.checkPassword(p.getName(), pass)) {
@@ -705,7 +710,7 @@ public class Menu {
                                     authMe.login(p);
                                 }
                             })),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
         } catch (NoClassDefFoundError ignored) {}
     }
@@ -746,10 +751,43 @@ public class Menu {
         return builder.build();
     }
 
+    private static final java.lang.reflect.Method CALLBACK_SAM = findCallbackSam();
+
+    private static java.lang.reflect.Method findCallbackSam() {
+        for (java.lang.reflect.Method m : DialogActionCallback.class.getMethods()) {
+            if (java.lang.reflect.Modifier.isAbstract(m.getModifiers())
+                    && m.getDeclaringClass() != Object.class) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    private static void invokeCallback(DialogActionCallback cb, DialogResponseView r, Audience a) {
+        if (CALLBACK_SAM == null) return;
+        try { CALLBACK_SAM.invoke(cb, r, a); }
+        catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable t = e.getCause();
+            if (t instanceof RuntimeException re) throw re;
+            if (t instanceof Error err) throw err;
+        } catch (IllegalAccessException ignored) {}
+    }
+
     private static ActionButton btn(Cfg cfg, Component label, DialogActionCallback cb) {
         return ActionButton.builder(label)
                 .width(cfg.mainButtonWidth())
                 .action(DialogAction.customClick(cb, ClickCallback.Options.builder().build()))
+                .build();
+    }
+
+    private static ActionButton btn(Cfg cfg, Component label, String sound, DialogActionCallback cb) {
+        if (sound == null || sound.isBlank()) return btn(cfg, label, cb);
+        return ActionButton.builder(label)
+                .width(cfg.mainButtonWidth())
+                .action(DialogAction.customClick((r, a) -> {
+                    if (a instanceof Player p) playSound(p, sound);
+                    invokeCallback(cb, r, a);
+                }, ClickCallback.Options.builder().build()))
                 .build();
     }
 
@@ -841,8 +879,8 @@ public class Menu {
                             List.of(DialogInput.text("totp_code", Component.text(inputLabel))
                                     .maxLength(16).width(cfg.inputWidth()).build())))
                     .type(buildType(cfg, name,
-                            List.of(btn(cfg, cfg.totp2faSubmitButton(), verifyCb)),
-                            btn(cfg, cfg.logoutButton(), logoutCb)))
+                            List.of(btn(cfg, cfg.totp2faSubmitButton(), cfg.totp2faSubmitSound(), verifyCb)),
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
 
             await(latch);
@@ -870,7 +908,7 @@ public class Menu {
                             List.of(DialogInput.text("totp_code", Component.text(inputLabel))
                                     .maxLength(16).width(cfg.inputWidth()).build())))
                     .type(buildType(cfg, name,
-                            List.of(btn(cfg, cfg.totp2faSubmitButton(), (r, a) -> {
+                            List.of(btn(cfg, cfg.totp2faSubmitButton(), cfg.totp2faSubmitSound(), (r, a) -> {
                                 if (!(a instanceof Player p)) return;
                                 String code = r.getText("totp_code");
                                 if (code != null && authMe.checkTotpCode(name, code.trim())) {
@@ -879,7 +917,7 @@ public class Menu {
                                     show2FAIngame(p, cfg, lang, authMe, onSuccess, cfg.totp2faWrongCodeError());
                                 }
                             })),
-                            btn(cfg, cfg.logoutButton(), (r, a) -> {
+                            btn(cfg, cfg.logoutButton(), cfg.logoutSound(), (r, a) -> {
                                 if (a instanceof Player p) p.kick(lang.disconnectLogout(name, ip));
                             })))
             ));
@@ -904,7 +942,7 @@ public class Menu {
                             List.of(DialogInput.text("code", Component.text(inputLabel))
                                     .maxLength(16).width(cfg.inputWidth()).build())))
                     .type(DialogType.multiAction(
-                            List.of(btn(cfg, cfg.captchaSubmitButton(), (r, a) -> {
+                            List.of(btn(cfg, cfg.captchaSubmitButton(), cfg.captchaSubmitSound(), (r, a) -> {
                                 if (!(a instanceof Player p)) return;
                                 String typed = r.getText("code");
                                 if (captcha.matches(typed, code)) {
@@ -943,7 +981,7 @@ public class Menu {
                                     .maxLength(16).width(cfg.inputWidth()).build())))
                     .type(DialogType.multiAction(
                             List.of(
-                                    btn(cfg, cfg.emailVerifyButton(), (r, a) -> {
+                                    btn(cfg, cfg.emailVerifyButton(), cfg.emailVerifySound(), (r, a) -> {
                                         if (!(a instanceof Player p)) return;
                                         String typed = r.getText("code");
                                         if (code.equals(typed == null ? null : typed.trim())) {
@@ -956,7 +994,7 @@ public class Menu {
                                             showEmailVerifyDebugLoop(p, cfg, lang, email, code, cfg.emailWrongCodeError());
                                         }
                                     }),
-                                    btn(cfg, cfg.emailResendButton(), (r, a) -> {
+                                    btn(cfg, cfg.emailResendButton(), cfg.emailResendSound(), (r, a) -> {
                                         if (!(a instanceof Player p)) return;
                                         p.sendMessage(net.kyori.adventure.text.Component.text(
                                                 "[debug] Resend clicked (debug code: " + code + ")",
@@ -972,26 +1010,13 @@ public class Menu {
     // --- Custom screens ---
 
     public static void showCustomScreen(Player player, CustomScreen screen, String playerName) {
+        if (!screen.enabled()) return;
         try {
-            List<ActionButton> buttons = new ArrayList<>();
-            for (CustomScreen.Button btn : screen.buttons()) {
-                buttons.add(switch (btn.action()) {
-                    case OPEN_URL -> ActionButton.builder(btn.label())
-                            .width(btn.width())
-                            .action(DialogAction.staticAction(
-                                    net.kyori.adventure.text.event.ClickEvent.openUrl(btn.value())))
-                            .build();
-                    case COPY -> ActionButton.builder(btn.label())
-                            .width(btn.width())
-                            .action(DialogAction.staticAction(
-                                    net.kyori.adventure.text.event.ClickEvent.copyToClipboard(btn.value())))
-                            .build();
-                    case CLOSE -> ActionButton.builder(btn.label())
-                            .width(btn.width())
-                            .action(DialogAction.customClick((r, a) -> {}, ClickCallback.Options.builder().build()))
-                            .build();
-                });
+            if (screen.soundOnShow() != null) {
+                playSound(player, screen.soundOnShow());
             }
+
+            List<ActionButton> buttons = buildCustomButtons(screen, player, playerName, null);
 
             if (buttons.isEmpty()) {
                 buttons.add(ActionButton.builder(Component.text("OK"))
@@ -1008,4 +1033,96 @@ public class Menu {
             ));
         } catch (NoClassDefFoundError ignored) {}
     }
+
+    public static void showCustomScreenBlocking(
+            io.papermc.paper.connection.PlayerConfigurationConnection conn,
+            CustomScreen screen, String playerName) {
+        if (!screen.enabled()) return;
+        if (!conn.isConnected()) return;
+        try {
+            CountDownLatch latch = new CountDownLatch(1);
+            List<ActionButton> buttons = buildCustomButtons(screen, null, playerName, latch);
+
+            if (buttons.isEmpty()) {
+                buttons.add(ActionButton.builder(Component.text("OK"))
+                        .width(screen.buttonWidth())
+                        .action(DialogAction.customClick((r, a) -> latch.countDown(), ClickCallback.Options.builder().build()))
+                        .build());
+            }
+
+            Component title = screen.title() != null ? screen.title() : Component.text("Notice");
+            conn.getAudience().showDialog(Dialog.create(d -> d
+                    .empty()
+                    .base(buildBase(title, screen.content(), screen.allowClose(), List.of()))
+                    .type(DialogType.multiAction(buttons, null, 1))
+            ));
+            await(latch);
+        } catch (NoClassDefFoundError ignored) {}
+    }
+
+    private static List<ActionButton> buildCustomButtons(CustomScreen screen, Player playerOrNull,
+                                                         String playerName, CountDownLatch latchOrNull) {
+        List<ActionButton> buttons = new ArrayList<>();
+        for (CustomScreen.Button btn : screen.buttons()) {
+            String value = btn.value() != null ? btn.value().replace("{player}", playerName) : "";
+            DialogActionCallback soundCb = (r, a) -> {
+                if (btn.sound() != null && a instanceof Player p) playSound(p, btn.sound());
+                if (latchOrNull != null) latchOrNull.countDown();
+            };
+            buttons.add(switch (btn.action()) {
+                case OPEN_URL -> ActionButton.builder(btn.label())
+                        .width(btn.width())
+                        .action(DialogAction.staticAction(
+                                net.kyori.adventure.text.event.ClickEvent.openUrl(value)))
+                        .build();
+                case COPY -> ActionButton.builder(btn.label())
+                        .width(btn.width())
+                        .action(DialogAction.staticAction(
+                                net.kyori.adventure.text.event.ClickEvent.copyToClipboard(value)))
+                        .build();
+                case COMMAND -> ActionButton.builder(btn.label())
+                        .width(btn.width())
+                        .action(DialogAction.customClick((r, a) -> {
+                            if (btn.sound() != null && a instanceof Player p) playSound(p, btn.sound());
+                            if (a instanceof Player p && !value.isBlank()) {
+                                p.performCommand(value.startsWith("/") ? value.substring(1) : value);
+                            }
+                            if (latchOrNull != null) latchOrNull.countDown();
+                        }, ClickCallback.Options.builder().build()))
+                        .build();
+                case CONSOLE -> ActionButton.builder(btn.label())
+                        .width(btn.width())
+                        .action(DialogAction.customClick((r, a) -> {
+                            if (btn.sound() != null && a instanceof Player p) playSound(p, btn.sound());
+                            if (!value.isBlank()) {
+                                AuthMeBia.get().getServer().dispatchCommand(
+                                        AuthMeBia.get().getServer().getConsoleSender(),
+                                        value.startsWith("/") ? value.substring(1) : value);
+                            }
+                            if (latchOrNull != null) latchOrNull.countDown();
+                        }, ClickCallback.Options.builder().build()))
+                        .build();
+                case CLOSE -> ActionButton.builder(btn.label())
+                        .width(btn.width())
+                        .action(DialogAction.customClick(soundCb, ClickCallback.Options.builder().build()))
+                        .build();
+            });
+        }
+        return buttons;
+    }
+
+    static void playSound(Player player, String soundConfig) {
+        if (soundConfig == null || soundConfig.isBlank()) return;
+        try {
+            String[] parts = soundConfig.trim().split("\\s+");
+            String keyStr = parts[0];
+            float volume = parts.length > 1 ? Float.parseFloat(parts[1]) : 1.0f;
+            float pitch  = parts.length > 2 ? Float.parseFloat(parts[2]) : 1.0f;
+            int colon = keyStr.indexOf(':');
+            String namespace = colon > 0 ? keyStr.substring(0, colon) : "minecraft";
+            String path      = colon > 0 ? keyStr.substring(colon + 1) : keyStr;
+            player.playSound(Sound.sound(Key.key(namespace, path), Sound.Source.MASTER, volume, pitch));
+        } catch (Exception ignored) {}
+    }
 }
+

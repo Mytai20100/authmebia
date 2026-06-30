@@ -1,5 +1,11 @@
 # AuthMeBia configuration.
-# Text fields support MiniMessage color/decoration tags, e.g. <red>, <#ff0000>, <bold>.
+# Text fields support full MiniMessage formatting, including:
+#   Colors:      <red>, <gold>, <#4287f5>, <gradient:red:blue>, <rainbow>
+#   Decorations: <bold>, <italic>, <underlined>, <strikethrough>, <obfuscated>
+#   Font:        <font:minecraft:alt>text</font>
+#   Hover:       <hover:show_text:'tooltip'>text</hover>
+#   Click:       <click:open_url:'https://...'>text</click>
+#   Keybind:     <key:jump>
 # Use {player} as a placeholder for the player's name where supported.
 # Use \n inside a string to insert a line break.
 
@@ -71,16 +77,29 @@ dialog:
     # Title shown at the top of the registration dialog.
     title: "<#4287f5>Create Account</#4287f5>"
     # Body text shown above the input fields. Leave empty for no body text.
-    content: ""
+    content: "<gray>Welcome, {player}! Please create a password to register.</gray>"
+    # Label for the password input field.
+    password_label: "Password"
+    # Label for the confirm-password input field.
+    confirm_password_label: "Confirm Password"
+    # Sound played when clicking the Register/Submit button.
+    submit_sound: ""
 
   login:
     # Title shown at the top of the login dialog.
     title: "<gold>Login</gold>"
     # Body text shown above the password field.
     content: "<gold>Welcome back, {player}!</gold>"
+    # Label for the password input field.
+    password_label: "Password"
+    # Sound played when clicking the Login/Submit button.
+    submit_sound: ""
 
   # Label of the button that disconnects the player instead of submitting.
   logout_button: "<red>Logout</red>"
+  # Sound played when clicking the Logout button in any auth dialog.
+  # Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
+  logout_sound: ""
 
   # Label of the button that submits the registration form.
   submit_register_button: "<green>Register</green>"
@@ -120,6 +139,8 @@ auth_mode:
     # Width in pixels of the numpad buttons (digits, delete, confirm).
     # Valid range: 1-1024. Lower this to make the numpad more compact.
     button_width: 100
+    # Sound played when clicking any PIN numpad button (digits, delete, confirm).
+    button_sound: ""
 
   slider:
     # Number of digits in the slider code. Valid range: 4-8.
@@ -131,6 +152,8 @@ auth_mode:
     # Width in pixels of the slider buttons (the +/- and digit cells).
     # Valid range: 1-1024.
     button_width: 100
+    # Sound played when clicking any slider button (+/-, confirm).
+    button_sound: ""
 
 # Grace period shown after submitting a register/login so the server has time
 # to finish loading the account before AuthMeBia force-logs the player in.
@@ -186,6 +209,8 @@ rule:
   # Label of the button that confirms agreement. The checkbox must be ticked
   # for this to count as agreeing.
   agree_button: "<green>Agree</green>"
+  # Sound played when clicking the Agree button in the rules dialog.
+  agree_sound: ""
 
 discord:
   # If true, sends a Discord webhook notification (e.g. on player join).
@@ -262,6 +287,8 @@ captcha:
 
   # Label of the button that submits the typed code.
   submit_button: "<green>Verify</green>"
+  # Sound played when clicking the Verify button in the captcha dialog.
+  submit_sound: ""
 
   # How long (in seconds) a successful captcha verification is trusted for,
   # so the player isn't asked again on every join during this window.
@@ -310,6 +337,8 @@ recover:
 
   # Label of the submit button. Supports MiniMessage.
   submit_button: "<green>Set Password</green>"
+  # Sound played when clicking the Set Password button.
+  submit_sound: ""
 
   # Message sent to the player (chat) on successful reset.
   # Supports MiniMessage and {player}.
@@ -357,9 +386,17 @@ email:
 
   # Label of the verify button.
   verify_button: "<green>Verify</green>"
+  # Sound played when clicking the Verify button in the email verify dialog.
+  verify_sound: ""
 
-  # Label of the resend button.
+  # Label of the resend button (when cooldown has expired).
   resend_button: "<yellow>Resend code</yellow>"
+  # Sound played when clicking the Resend button.
+  resend_sound: ""
+
+  # Label of the resend button while the cooldown is still active.
+  # Use {cooldown} for the remaining seconds.
+  resend_button_cooldown: "<gray>Resend ({cooldown}s)</gray>"
 
   # Messages (chat). Support MiniMessage and {player}.
   # Shown when the entered email is not a valid address.
@@ -387,28 +424,73 @@ totp_2fa:
 
   # Label of the verify button. Supports MiniMessage.
   submit_button: "<green>Verify</green>"
+  # Sound played when clicking the Verify button in the 2FA dialog.
+  submit_sound: ""
 
   # Error shown inline when the code is wrong.
   wrong_code_error: "Invalid code"
 
-# Custom dialog screens that admins can define and show to players.
-# Show a screen with: /bia screen <id> [player]
-# Buttons support actions: close, open_url, copy.
-# Title and content support MiniMessage tags.
-# Use {player} in title/content as a placeholder for the player's name.
+# Custom dialog screens — a mini-framework for showing fully custom dialogs.
+#
+# Show a screen manually: /bia screen <id> [player]
+#
+# Each screen supports:
+#   id           - unique identifier used with /bia screen <id>
+#   enabled      - true/false, disables the screen without removing it (default: true)
+#   title        - dialog title, supports full MiniMessage
+#   content      - dialog body, supports MiniMessage and \n
+#   allow_close  - whether the player can dismiss with ESC (default: true)
+#   button_width - default button width in pixels for this screen (default: dialog.button_width)
+#   trigger      - when this screen is automatically shown:
+#                    command  (default) - only via /bia screen
+#                    postjoin           - shown after the player authenticates and spawns in-game
+#                    prejoin            - shown during the pre-spawn phase (blocking), after auth
+#   sound_on_show - Minecraft sound played when the screen opens (in-game only).
+#                   Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
+#                   Example: "minecraft:ui.button.click 1.0 1.0"
+#
+# Each button supports:
+#   label   - button text, full MiniMessage + {player}
+#   action  - close, open_url, copy, command (as player), console (as console)
+#   value   - URL/text/command depending on action; supports {player}
+#   width   - button width in pixels (overrides button_width)
+#   sound   - Minecraft sound played when this button is clicked (in-game only)
+#             Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
+#
+# Use {player} in title, content, and button values/labels as a placeholder.
 custom_screens:
   - id: example
+    enabled: true
     title: "<gold>Server Notice</gold>"
-    content: "<gray>Welcome to the server, {player}!\nHave fun playing.</gray>"
+    content: "<gray>Welcome to the server, <yellow>{player}</yellow>!\nHave fun playing.</gray>"
     allow_close: true
     button_width: 200
+    trigger: command
+    sound_on_show: ""
     buttons:
       - label: "<green>OK</green>"
         action: close
+        sound: "minecraft:ui.button.click"
       - label: "<#5865F2>Discord</#5865F2>"
         action: open_url
         value: "https://discord.gg/abc"
         width: 200
+
+  # Example: auto-show after authentication (postjoin trigger)
+  # - id: welcome_notice
+  #   enabled: false
+  #   title: "<gradient:gold:yellow>Welcome!</gradient>"
+  #   content: "<gray>Hello, <white>{player}</white>!\nEnjoy your stay.</gray>"
+  #   allow_close: true
+  #   trigger: postjoin
+  #   sound_on_show: "minecraft:entity.player.levelup 0.5 1.2"
+  #   buttons:
+  #     - label: "<green>Play!</green>"
+  #       action: close
+  #       sound: "minecraft:ui.button.click"
+  #     - label: "<aqua>Rules</aqua>"
+  #       action: command
+  #       value: "/rules"
 
 ip_ban:
   # If true, temporarily bans an IP address after repeated wrong password

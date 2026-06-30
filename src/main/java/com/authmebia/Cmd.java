@@ -36,6 +36,11 @@ public class Cmd {
                 .then(Commands.literal("add")
                     .requires(source -> source.getSender().hasPermission("authmebia.bypass"))
                     .then(Commands.argument("player", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                .forEach(p -> builder.suggest(p.getName()));
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             addBypass(ctx.getSource().getSender(), StringArgumentType.getString(ctx, "player"));
                             return Command.SINGLE_SUCCESS;
@@ -43,6 +48,11 @@ public class Cmd {
                 .then(Commands.literal("rm")
                     .requires(source -> source.getSender().hasPermission("authmebia.bypass"))
                     .then(Commands.argument("player", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                .forEach(p -> builder.suggest(p.getName()));
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             removeBypass(ctx.getSource().getSender(), StringArgumentType.getString(ctx, "player"));
                             return Command.SINGLE_SUCCESS;
@@ -50,6 +60,11 @@ public class Cmd {
                 .then(Commands.literal("recover")
                     .requires(source -> source.getSender().hasPermission("bia.admin.recover"))
                     .then(Commands.argument("player", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                .forEach(p -> builder.suggest(p.getName()));
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             recover(ctx.getSource().getSender(), StringArgumentType.getString(ctx, "player"));
                             return Command.SINGLE_SUCCESS;
@@ -57,7 +72,18 @@ public class Cmd {
                 .then(Commands.literal("debug")
                     .requires(source -> source.getSender().isOp())
                     .then(Commands.argument("feature", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            for (String f : new String[]{"captcha", "email", "register", "login", "wait", "recover", "rule"})
+                                builder.suggest(f);
+                            return builder.buildFuture();
+                        })
                         .then(Commands.argument("value", StringArgumentType.word())
+                            .suggests((ctx, builder) -> {
+                                builder.suggest("true");
+                                builder.suggest("false");
+                                builder.suggest("show");
+                                return builder.buildFuture();
+                            })
                             .executes(ctx -> {
                                 debug(
                                     ctx.getSource().getSender(),
@@ -69,12 +95,21 @@ public class Cmd {
                 .then(Commands.literal("screen")
                     .requires(source -> source.getSender().isOp())
                     .then(Commands.argument("id", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            plugin.cfg().customScreens().forEach(s -> builder.suggest(s.id()));
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             showScreen(ctx.getSource().getSender(),
                                 StringArgumentType.getString(ctx, "id"), null);
                             return Command.SINGLE_SUCCESS;
                         })
                         .then(Commands.argument("player", StringArgumentType.word())
+                            .suggests((ctx, builder) -> {
+                                ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                    .forEach(p -> builder.suggest(p.getName()));
+                                return builder.buildFuture();
+                            })
                             .executes(ctx -> {
                                 showScreen(ctx.getSource().getSender(),
                                     StringArgumentType.getString(ctx, "id"),
@@ -269,6 +304,11 @@ public class Cmd {
         if (screen == null) {
             sender.sendMessage(Component.text(
                 "No custom screen with id '" + id + "' found in config.yml.", NamedTextColor.RED));
+            return;
+        }
+        if (!screen.enabled()) {
+            sender.sendMessage(Component.text(
+                "Screen '" + id + "' is disabled (enabled: false in config.yml).", NamedTextColor.RED));
             return;
         }
 

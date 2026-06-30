@@ -5,6 +5,27 @@ All files mentioned below live inside `plugins/AuthMeBia/` unless stated otherwi
 
 ---
 
+## MiniMessage Formatting
+
+All text fields in `config.yml` and all language files support full
+[MiniMessage](https://docs.advntr.dev/minimessage/format.html) formatting:
+
+| Tag example | Effect |
+|---|---|
+| `<red>`, `<gold>`, `<#4287f5>` | Colors |
+| `<bold>`, `<italic>`, `<underlined>` | Decorations |
+| `<gradient:red:blue>text</gradient>` | Gradient |
+| `<rainbow>text</rainbow>` | Rainbow |
+| `<font:minecraft:alt>text</font>` | Custom font |
+| `<hover:show_text:'tip'>text</hover>` | Hover tooltip |
+| `<click:open_url:'https://...'>text</click>` | Click action |
+| `<key:jump>` | Keybind display |
+
+Use `{player}` anywhere as a placeholder for the player's name.
+Use `\n` inside any string to insert a line break.
+
+---
+
 ## Language / Localization (`lang/`)
 
 AuthMeBia externalizes all player-facing messages into YAML language files stored
@@ -67,27 +88,118 @@ All message values support:
 | `{player}` | The player's username |
 | `{player_ip}` | The player's IP address |
 
-Both placeholders work in every section, including `disconnect`, `error`, and
-`message` keys.
-
-### MiniMessage formatting
-
-Every value supports MiniMessage color and decoration tags:
-
-```yaml
-disconnect:
-  ip_banned: "<red>Your IP (<yellow>{player_ip}</yellow>) is temporarily banned."
-```
-
-Supported tags: color names (`<red>`, `<gold>`, …), hex colors (`<#4287f5>`),
-decorations (`<bold>`, `<italic>`, `<underlined>`, `<strikethrough>`, `<obfuscated>`).
-
 ### Adding a custom language
 
 1. Copy `lang/en.yml` to `lang/<code>.yml` (e.g. `lang/fr.yml`).
 2. Translate the values.
 3. Set `lang: fr` in `config.yml`.
 4. Run `/bia reload`.
+
+---
+
+## Custom Screens
+
+AuthMeBia includes a mini-framework for defining fully custom dialog screens that
+admins can show to players on demand or automatically on join.
+
+### Defining a screen
+
+Add entries to `custom_screens` in `config.yml`:
+
+```yaml
+custom_screens:
+  - id: welcome
+    enabled: true
+    title: "<gradient:gold:yellow>Welcome!</gradient>"
+    content: "<gray>Hello, <white>{player}</white>!\nEnjoy your stay.</gray>"
+    allow_close: true
+    button_width: 200
+    trigger: postjoin
+    sound_on_show: "minecraft:entity.player.levelup 0.5 1.2"
+    buttons:
+      - label: "<green>Play!</green>"
+        action: close
+        sound: "minecraft:ui.button.click"
+      - label: "<aqua>Rules</aqua>"
+        action: command
+        value: "/rules"
+      - label: "<#5865F2>Discord</#5865F2>"
+        action: open_url
+        value: "https://discord.gg/abc"
+```
+
+### Screen fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | string | required | Unique ID used with `/bia screen <id>` |
+| `enabled` | boolean | `true` | Enable/disable without removing the entry |
+| `title` | string | `"Notice"` | Dialog title. Full MiniMessage. |
+| `content` | string | `""` | Dialog body. Full MiniMessage + `\n`. |
+| `allow_close` | boolean | `true` | Whether ESC/click-outside closes the dialog |
+| `button_width` | int | `dialog.button_width` | Default width for buttons in this screen |
+| `trigger` | string | `command` | When the screen auto-shows (see below) |
+| `sound_on_show` | string | `""` | Sound played when the screen opens (in-game only) |
+
+### `trigger` values
+
+| Value | Behaviour |
+|-------|-----------|
+| `command` | Only shown via `/bia screen <id> [player]` (default) |
+| `postjoin` | Shown automatically after the player authenticates and spawns |
+| `prejoin` | Shown during the pre-spawn phase (blocking), after auth, before spawn |
+
+When `trigger: postjoin` or `trigger: prejoin`, the screen is shown on **every
+login** while `enabled: true`. Set `enabled: false` when you no longer want
+it auto-shown.
+
+### Button fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `label` | string | `"OK"` | Button text. Full MiniMessage + `{player}`. |
+| `action` | string | `close` | What happens when clicked (see below) |
+| `value` | string | `""` | URL, text, or command. Supports `{player}`. |
+| `width` | int | `button_width` | Button width in pixels |
+| `sound` | string | `""` | Sound played on click (in-game only) |
+
+### Button `action` values
+
+| Value | Behaviour |
+|-------|-----------|
+| `close` | Closes the dialog |
+| `open_url` | Opens `value` as a URL in the player's browser |
+| `copy` | Copies `value` to the player's clipboard |
+| `command` | Runs `value` as a command dispatched by the player |
+| `console` | Runs `value` as a command dispatched by the console |
+
+### Sound format
+
+Both `sound_on_show` (per screen) and `sound` (per button) use the same format:
+
+```
+"namespace:sound.name"
+"namespace:sound.name volume pitch"
+```
+
+Examples:
+- `"minecraft:ui.button.click"`
+- `"minecraft:entity.player.levelup 0.5 1.2"`
+- `"minecraft:block.note_block.harp 1.0 2.0"`
+
+Sounds only play in the in-game (post-spawn) path. They have no effect during
+the pre-spawn blocking phase.
+
+### Showing a screen via command
+
+```
+/bia screen <id>            Show screen to yourself (must be in-game)
+/bia screen <id> <player>  Show screen to another online player
+```
+
+Tab completion is available for `<id>` (lists all configured screen IDs) and
+`<player>` (lists online players). The same tab completion applies to
+`/bia add <player>`, `/bia rm <player>`, and `/bia recover <player>`.
 
 ---
 
@@ -105,8 +217,7 @@ pre-spawn (`dialog.menu: true`) and post-spawn (`dialog.menu: false`) paths,
 before ever sending a dialog. Clients below `dialog.min_protocol_version`
 skip every AuthMeBia dialog and authenticate with AuthMe's plain `/login`
 and `/register` commands instead -- the freeze-then-kick never happens.
-See the `dialog.min_protocol_version` and `dialog.protocol_detect_wait_ms`
-comments in `config.yml` for the tunable details.
+See the `dialog.min_protocol_version` comment in `config.yml` for details.
 
 ---
 
@@ -149,18 +260,6 @@ added: "2026-06-22T10:15:30Z"
 | `uuid` | The player's UUID (also the folder name) |
 | `added` | UTC timestamp (ISO-8601) of when the entry was created |
 
-Membership is cached in memory after the plugin loads, so deleting a
-`data/<uuid>/` folder by hand while the server is offline also works; it
-just will not take effect until the next restart (use `/bia rm` instead if
-the server is running).
-
-### Security note
-
-Bypassed players skip the captcha and rule-agreement dialogs too, along
-with login/register. Only add players you trust to behave correctly with
-AuthMe's plain command flow (e.g. staff, or players whose client cannot
-render dialogs for reasons this plugin cannot detect).
-
 ---
 
 ## Blindness Effect Interaction
@@ -176,7 +275,9 @@ immediately after every successful force-login/force-register, whenever
 AuthMe's `applyBlindEffect` setting is on. No configuration is needed for
 this; it is always active alongside that AuthMe setting.
 
+---
 
+## Welcome Image (`welcome.json`)
 
 The welcome image is generated when a player registers and (optionally) posted
 to Discord. It is built from a layered canvas defined in `welcome.json`.
@@ -264,14 +365,3 @@ offline-mode. Falls back to Crafatar on rare texture-read failures.
   ]
 }
 ```
-
-### Tips
-
-- Layers are drawn in ascending `z` order.
-- `size` is always square for images. Pre-crop assets to the aspect ratio you want.
-- Fonts are resolved from the JVM/OS — if a font name is not found, the JVM falls
-  back silently. Verify the exact family name is installed if text looks wrong.
-- Changes to `welcome.json` are picked up at the next generation — no reload needed,
-  but the file must remain valid JSON.
-- `background.png` shipped with the plugin is a small placeholder. Replace it with
-  artwork sized to your `welcome_size` for best results.

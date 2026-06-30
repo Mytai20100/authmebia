@@ -234,6 +234,7 @@ public class AuthMe implements Listener {
             if (cfg.authWaitEnabled() && cfg.authWaitPreJoin()) {
                 Menu.showWaitDialogBlocking(connection, cfg, cfg.authWaitSeconds());
             }
+            showPrejoinScreensBlocking(connection, name);
             pendingForceLogin.put(uuid, true);
             authed.set(true);
             return;
@@ -260,6 +261,7 @@ public class AuthMe implements Listener {
                 Menu.showWaitDialogBlocking(connection, cfg, cfg.authWaitSeconds());
             }
 
+            showPrejoinScreensBlocking(connection, name);
             pendingForceLogin.put(uuid, true);
             authed.set(true);
         } else {
@@ -267,9 +269,28 @@ public class AuthMe implements Listener {
             if (!ok) {
                 connection.disconnect(lang.disconnectLoginFailed(ip));
             } else {
+                showPrejoinScreensBlocking(connection, name);
                 pendingForceLogin.put(uuid, true);
                 authed.set(true);
             }
+        }
+    }
+
+    private void showPrejoinScreensBlocking(PlayerConfigurationConnection conn, String playerName) {
+        for (CustomScreen screen : plugin.cfg().customScreens()) {
+            if (!screen.enabled()) continue;
+            if (screen.trigger() != CustomScreen.Trigger.PREJOIN) continue;
+            if (!conn.isConnected()) break;
+            Menu.showCustomScreenBlocking(conn, screen, playerName);
+        }
+    }
+
+    private void showPostJoinScreens(Player player) {
+        for (CustomScreen screen : plugin.cfg().customScreens()) {
+            if (!screen.enabled()) continue;
+            if (screen.trigger() != CustomScreen.Trigger.POSTJOIN) continue;
+            Menu.showCustomScreen(player, screen, player.getName());
+            return; // show one POSTJOIN screen per auth event; screens can chain via buttons
         }
     }
 
@@ -479,7 +500,11 @@ public class AuthMe implements Listener {
         }
         future.thenAccept(ok -> {
             if (!ok) return;
-            runOnPlayer(player, () -> { clearBlindEffect(player); closeDialog(player); });
+            runOnPlayer(player, () -> {
+                clearBlindEffect(player);
+                closeDialog(player);
+                showPostJoinScreens(player);
+            });
             if (welcome && (plugin.cfg().welcomeImageEnabled() || plugin.cfg().discordEnabled())) {
                 runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
             }

@@ -2,8 +2,6 @@ package com.authmebia;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.util.ArrayList;
@@ -14,12 +12,7 @@ public class Cfg {
 
     private final AuthMeBia plugin;
     private FileConfiguration config;
-    private static final MiniMessage MM = MiniMessage.builder()
-            .tags(TagResolver.builder()
-                    .resolver(StandardTags.color())
-                    .resolver(StandardTags.decorations())
-                    .build())
-            .build();
+    private static final MiniMessage MM = MiniMessage.miniMessage();
 
     public Cfg(AuthMeBia plugin) {
         this.plugin = plugin;
@@ -82,6 +75,18 @@ public class Cfg {
 
     public Component submitLoginButton() {
         return parse(config.getString("dialog.submit_login_button", "<green>Login</green>"));
+    }
+
+    public String passwordLabel() {
+        return config.getString("dialog.register.password_label", "Password");
+    }
+
+    public String confirmPasswordLabel() {
+        return config.getString("dialog.register.confirm_password_label", "Confirm Password");
+    }
+
+    public String loginPasswordLabel() {
+        return config.getString("dialog.login.password_label", "Password");
     }
 
     public boolean dialogAllowClose() {
@@ -277,10 +282,23 @@ public class Cfg {
     public Component emailVerifyContent(String email, int cooldownRemaining) {
         String raw = config.getString("email.verify_content",
                 "<gray>A code was sent to {email}.\nResend available in {cooldown}s.</gray>");
-        raw = raw.replace("{email}", email == null ? "" : email)
+        String safeEmail = email == null ? "" : email.replace("<", "\\<").replace(">", "\\>");
+        raw = raw.replace("{email}", safeEmail)
                  .replace("{cooldown}", Integer.toString(Math.max(0, cooldownRemaining)));
         return parse(raw);
     }
+
+    public String loginSubmitSound()    { return config.getString("dialog.login.submit_sound", ""); }
+    public String registerSubmitSound() { return config.getString("dialog.register.submit_sound", ""); }
+    public String logoutSound()         { return config.getString("dialog.logout_sound", ""); }
+    public String captchaSubmitSound()  { return config.getString("captcha.submit_sound", ""); }
+    public String emailVerifySound()    { return config.getString("email.verify_sound", ""); }
+    public String emailResendSound()    { return config.getString("email.resend_sound", ""); }
+    public String totp2faSubmitSound()  { return config.getString("totp_2fa.submit_sound", ""); }
+    public String recoverSubmitSound()  { return config.getString("recover.submit_sound", ""); }
+    public String ruleAgreeSound()      { return config.getString("rule.agree_sound", ""); }
+    public String pinButtonSound()      { return config.getString("auth_mode.pin.button_sound", ""); }
+    public String sliderButtonSound()   { return config.getString("auth_mode.slider.button_sound", ""); }
 
     public String emailCodeLabel() {
         return config.getString("email.code_label", "Code");
@@ -292,6 +310,11 @@ public class Cfg {
 
     public Component emailResendButton() {
         return parse(config.getString("email.resend_button", "<yellow>Resend code</yellow>"));
+    }
+
+    public Component emailResendButtonCooldown(int remaining) {
+        String raw = config.getString("email.resend_button_cooldown", "<gray>Resend ({cooldown}s)</gray>");
+        return parse(raw.replace("{cooldown}", Integer.toString(Math.max(0, remaining))));
     }
 
     public Component emailInvalidEmailMessage() {
@@ -482,11 +505,15 @@ public class Cfg {
     private CustomScreen buildCustomScreen(Map<?, ?> map) {
         String id = readString(map, "id", "");
         if (id.isBlank()) return null;
+        boolean enabled = readBoolean(map, "enabled", true);
         Component title = parse(readString(map, "title", "Notice"));
         if (title == null) title = net.kyori.adventure.text.Component.text("Notice");
         Component content = parse(readString(map, "content", ""));
         boolean allowClose = readBoolean(map, "allow_close", true);
         int defaultWidth = clampWidth(readInt(map, "button_width", mainButtonWidth()));
+        CustomScreen.Trigger trigger = CustomScreen.Trigger.parse(readString(map, "trigger", "command"));
+        String soundOnShow = readString(map, "sound_on_show", null);
+        if (soundOnShow != null && soundOnShow.isBlank()) soundOnShow = null;
 
         List<CustomScreen.Button> buttons = new ArrayList<>();
         Object rawBtns = map.get("buttons");
@@ -495,17 +522,15 @@ public class Cfg {
                 if (!(o instanceof Map<?, ?> bm)) continue;
                 Component label = parse(readString(bm, "label", "OK"));
                 if (label == null) label = net.kyori.adventure.text.Component.text("OK");
-                CustomScreen.Button.Action action = switch (readString(bm, "action", "close").toLowerCase()) {
-                    case "open_url" -> CustomScreen.Button.Action.OPEN_URL;
-                    case "copy"     -> CustomScreen.Button.Action.COPY;
-                    default         -> CustomScreen.Button.Action.CLOSE;
-                };
+                CustomScreen.Button.Action action = CustomScreen.Button.Action.parse(readString(bm, "action", "close"));
                 String value = readString(bm, "value", "");
                 int width = clampWidth(readInt(bm, "width", defaultWidth));
-                buttons.add(new CustomScreen.Button(label, action, value, width));
+                String btnSound = readString(bm, "sound", null);
+                if (btnSound != null && btnSound.isBlank()) btnSound = null;
+                buttons.add(new CustomScreen.Button(label, action, value, width, btnSound));
             }
         }
-        return new CustomScreen(id, title, content, allowClose, defaultWidth, buttons);
+        return new CustomScreen(id, enabled, title, content, allowClose, defaultWidth, buttons, trigger, soundOnShow);
     }
 
     public boolean copyDefaultsIfMissing(String name) {

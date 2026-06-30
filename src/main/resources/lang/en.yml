@@ -1,5 +1,5 @@
 # AuthMeBia language file - English
-# Supports MiniMessage tags: <red>, <gold>, <bold>, etc.
+# Supports full MiniMessage tags: <red>, <gold>, <bold>, <gradient:red:blue>, etc.
 # Placeholders: {player} = player name, {player_ip} = player IP address
 
 # Disconnect / kick messages (shown in the disconnect screen)

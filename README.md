@@ -31,6 +31,48 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 
 </details>
 
+<details>
+<summary>Captcha</summary>
+
+![Captcha dialog](img/screen_captcha.png)
+
+</details>
+
+<details>
+<summary>Email Verification</summary>
+
+![Email verification dialog](img/screen_email.png)
+
+</details>
+
+<details>
+<summary>Password Recovery</summary>
+
+![Password recovery dialog](img/screen_recovery.png)
+
+</details>
+
+<details>
+<summary>Wait</summary>
+
+![Wait dialog](img/screen_wait.png)
+
+</details>
+
+<details>
+<summary>Login Timeout</summary>
+
+![Login timeout dialog](img/screen_timeoutlogin.png)
+
+</details>
+
+<details>
+<summary>Buttons / Links</summary>
+
+![Buttons and link buttons](img/screen_buttons.png)
+
+</details>
+
 ---
 
 ## Requirements
@@ -43,23 +85,32 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 
 ## Features
 
+**Dialog modes**
 - Pre-spawn dialog mode: the login or register window blocks the connection phase, so the player spawns already authenticated
 - Post-spawn dialog mode: the window appears after the player joins the world
 - Three auth input modes: password text field, numeric PIN grid, or per-digit slider
+
+**Authentication**
+- Premium bypass: players whose UUID matches a premium account stored in AuthMe are detected automatically and skip all dialogs entirely
+- TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
 - Captcha dialog synced with AuthMe's captcha setting
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
-- TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
-- Server rules agreement checkbox before first join
-- Admin-forced password reset dialog
-- IP ban with escalating durations after repeated failed logins
-- Login attempt limit with kick
-- Login timeout with optional kick or re-show
-- Custom screens: define dialog windows in config.yml and show them to any online player with a command
+- Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online
+- Server rules agreement checkbox shown to new players before their account is created
+- Login attempt limit with kick after too many wrong passwords
+- Login timeout with optional kick or re-show of the dialog
+- IP ban with escalating ban durations after repeated failed logins across sessions
+
+**Admin tools**
+- Bypass list: players added with `/bia add` skip all dialogs and fall back to AuthMe's own commands
+- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`
+- Debug commands: preview individual dialogs in-game without going through the full login flow
+
+**Extras**
 - Link buttons inside dialogs (open URL, copy to clipboard)
-- Discord webhook notification on player join
-- Welcome image generation sent to the player on first login
-- Bypass list: players on the list skip all dialogs and use AuthMe's standard commands
-- ViaVersion support: players on older protocol versions fall back to AuthMe's normal flow
+- Discord webhook notification on player join or first registration
+- Welcome image sent to the player after first login
+- ViaVersion support: players on older protocol versions fall back to AuthMe's normal flow automatically
 
 ---
 

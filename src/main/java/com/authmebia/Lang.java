@@ -2,8 +2,6 @@ package com.authmebia;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
@@ -13,12 +11,7 @@ import java.nio.charset.StandardCharsets;
 
 public final class Lang {
 
-    private static final MiniMessage MM = MiniMessage.builder()
-            .tags(TagResolver.builder()
-                    .resolver(StandardTags.color())
-                    .resolver(StandardTags.decorations())
-                    .build())
-            .build();
+    private static final MiniMessage MM = MiniMessage.miniMessage();
 
     private final AuthMeBia plugin;
     private YamlConfiguration data;

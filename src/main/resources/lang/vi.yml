@@ -1,5 +1,5 @@
 # AuthMeBia language file - Tiếng Việt
-# Hỗ trợ MiniMessage: <red>, <gold>, <bold>, v.v.
+# Hỗ trợ đầy đủ MiniMessage: <red>, <gold>, <bold>, <gradient:red:blue>, v.v.
 # Placeholder: {player} = tên người chơi, {player_ip} = địa chỉ IP của người chơi
 
 # Thông báo ngắt kết nối / kick (hiện trên màn hình disconnect)

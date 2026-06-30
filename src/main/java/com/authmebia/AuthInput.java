@@ -154,17 +154,18 @@ public final class AuthInput {
                                          Consumer<Integer> onDigit, Runnable onDelete,
                                          Runnable onConfirm, Runnable onLogout) {
         int width = cfg.pinButtonWidth();
+        String sound = cfg.pinButtonSound();
         List<ActionButton> buttons = new ArrayList<>(12);
         for (int n = 1; n <= 9; n++) {
             int value = n;
-            buttons.add(numButton(width, Component.text(Integer.toString(value)), () -> onDigit.accept(value)));
+            buttons.add(numButton(width, Component.text(Integer.toString(value)), sound, () -> onDigit.accept(value)));
         }
-        buttons.add(numButton(width, Component.text("0"), () -> onDigit.accept(0)));
-        buttons.add(numButton(width, cfg.pinDeleteButton(), onDelete));
-        buttons.add(numButton(width, cfg.pinConfirmButton(), onConfirm));
+        buttons.add(numButton(width, Component.text("0"), sound, () -> onDigit.accept(0)));
+        buttons.add(numButton(width, cfg.pinDeleteButton(), sound, onDelete));
+        buttons.add(numButton(width, cfg.pinConfirmButton(), sound, onConfirm));
 
         Component body = pinProgress(sb.length(), length, statusLine);
-        ActionButton logout = numButton(width, cfg.logoutButton(), onLogout);
+        ActionButton logout = numButton(width, cfg.logoutButton(), cfg.logoutSound(), onLogout);
 
         return Dialog.create(d -> d.empty()
                 .base(buildBase(cfg.pinTitle(), body))
@@ -175,23 +176,24 @@ public final class AuthInput {
                                             Consumer<Integer> onPlus, Consumer<Integer> onMinus,
                                             Runnable onConfirm, Runnable onLogout) {
         int width = cfg.sliderButtonWidth();
+        String sound = cfg.sliderButtonSound();
         List<ActionButton> buttons = new ArrayList<>(length * 3 + 1);
         for (int i = 0; i < length; i++) {
             int pos = i;
-            buttons.add(numButton(width, Component.text("▲"), () -> onPlus.accept(pos))); // ▲
+            buttons.add(numButton(width, Component.text("▲"), sound, () -> onPlus.accept(pos))); // ▲
         }
         for (int i = 0; i < length; i++) {
             int pos = i;
-            buttons.add(numButton(width, Component.text(Integer.toString(digits[pos])), () -> {}));
+            buttons.add(numButton(width, Component.text(Integer.toString(digits[pos])), sound, () -> {}));
         }
         for (int i = 0; i < length; i++) {
             int pos = i;
-            buttons.add(numButton(width, Component.text("▼"), () -> onMinus.accept(pos))); // ▼
+            buttons.add(numButton(width, Component.text("▼"), sound, () -> onMinus.accept(pos))); // ▼
         }
-        buttons.add(numButton(width, cfg.sliderConfirmButton(), onConfirm));
+        buttons.add(numButton(width, cfg.sliderConfirmButton(), sound, onConfirm));
 
         Component body = sliderBody(statusLine);
-        ActionButton logout = numButton(width, cfg.logoutButton(), onLogout);
+        ActionButton logout = numButton(width, cfg.logoutButton(), cfg.logoutSound(), onLogout);
 
         return Dialog.create(d -> d.empty()
                 .base(buildBase(cfg.sliderTitle(), body))
@@ -210,6 +212,18 @@ public final class AuthInput {
 
     private static ActionButton numButton(int width, Component label, Runnable action) {
         DialogActionCallback cb = (DialogResponseView r, Audience a) -> action.run();
+        return ActionButton.builder(label)
+                .width(width)
+                .action(DialogAction.customClick(cb, ClickCallback.Options.builder().build()))
+                .build();
+    }
+
+    private static ActionButton numButton(int width, Component label, String sound, Runnable action) {
+        if (sound == null || sound.isBlank()) return numButton(width, label, action);
+        DialogActionCallback cb = (DialogResponseView r, Audience a) -> {
+            if (a instanceof Player p) Menu.playSound(p, sound);
+            action.run();
+        };
         return ActionButton.builder(label)
                 .width(width)
                 .action(DialogAction.customClick(cb, ClickCallback.Options.builder().build()))
