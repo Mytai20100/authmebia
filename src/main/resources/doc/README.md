@@ -97,6 +97,154 @@ All message values support:
 
 ---
 
+## Self-Service Password Recovery ("Forgot Password?")
+
+In addition to admin-forced recovery (`/bia recover`), players can reset their
+own password from the login dialog itself, without any admin involvement.
+
+### Requirements
+
+- `dialog.login.forgot_password.enabled: true` in `config.yml`.
+- The account must already have an email on file. This means `email.enabled`
+  must have been `true` at some point so the player verified an email during
+  registration (see the `email` section of `config.yml`). Accounts registered
+  before email verification was enabled, or that skipped it, have no email on
+  file.
+- AuthMe's own SMTP settings (`Email.mailAccount`, `Email.mailPassword`,
+  `Email.mailSMTP`) must be configured, since the reset code is sent through
+  the same `EmailService` used by registration email verification.
+
+### Flow
+
+1. On the login dialog, the player clicks **Forgot Password?** (label set by
+   `dialog.login.forgot_password.button`).
+2. If the account has no email on file, the player sees a message telling
+   them to contact an admin (`no_email_message`) and the flow stops there —
+   nothing is sent.
+3. Otherwise, the player is asked to enter the email address registered to
+   the account (`email_title` / `email_content` / `email_label`). This is a
+   confirmation step, not a lookup — the address must match what AuthMe has
+   stored, or the player sees `invalid_email_error`.
+4. Once confirmed, a numeric code (length `email.code_length`) is emailed to
+   that address, and the player sees the same verify dialog used for
+   registration email verification, including the resend cooldown
+   (`email.resend_cooldown`).
+5. After the code is verified, the player is shown the same two-field reset
+   dialog used by admin-forced recovery (`recover.*` in `config.yml`) to set
+   a new password.
+
+### Relevant config keys
+
+All keys below live under `dialog.login.forgot_password` in `config.yml`
+unless noted otherwise:
+
+| Key | Description |
+|-----|-------------|
+| `enabled` | Master switch for the button and the whole flow |
+| `button` / `button_sound` | Label and click sound for the Forgot Password button |
+| `email_title` | Title reused for both the email-entry step and the "no email on file" notice |
+| `email_content` | Body text of the email-entry step |
+| `email_label` | Label of the email input field |
+| `submit_button` / `submit_sound` | Label and click sound for the button that submits the entered email |
+| `invalid_email_error` | Inline error when the entered email doesn't match the one on file |
+| `no_email_message` | Shown instead of the email field when the account has no email on file |
+
+The code-length, resend cooldown, and wrong-code error reuse the existing
+`email.code_length`, `email.resend_cooldown`, and `email.wrong_code_error`
+settings, since this step is the same verify dialog used during registration.
+
+---
+
+## Button Layout
+
+`dialog.button_layout` controls how the main action buttons are arranged
+inside the register and login dialogs:
+
+| Value | Behaviour |
+|-------|-----------|
+| `vertical` (default) | Buttons are stacked one per row |
+| `horizontal` | Buttons are placed side by side in a single row |
+
+This applies consistently to every main button in both dialogs — Login,
+Forgot Password, and Logout in the login dialog; Register and Logout in the
+register dialog — plus any link buttons shown alongside them when
+`links.position` is not `separated`. Custom screens and other standalone
+dialogs (captcha, 2FA, recover, wait, rule) are unaffected and keep their own
+layout.
+
+---
+
+## Button Click Sounds
+
+Nearly every clickable button across AuthMeBia's dialogs supports an optional
+click sound, configured with a `*_sound` key next to that button's label.
+Examples: `dialog.register.submit_sound`, `dialog.login.submit_sound`,
+`dialog.logout_sound`, `rule.agree_sound`, `captcha.submit_sound`,
+`email.verify_sound`, `email.resend_sound`, `totp_2fa.submit_sound`,
+`recover.submit_sound`, `auth_mode.pin.button_sound`,
+`auth_mode.slider.button_sound`, and `dialog.login.forgot_password.button_sound`
+/ `submit_sound`. Custom screens configure sounds per-screen and per-button
+instead (`sound_on_show` and `sound`, see the Custom Screens section below).
+
+Leave a `*_sound` key as `""` (the default) to play no sound.
+
+### Sound format
+
+```
+"namespace:sound.name"
+"namespace:sound.name volume pitch"
+```
+
+Examples:
+- `"minecraft:ui.button.click"`
+- `"minecraft:ui.button.click 1.0 1.0"`
+
+Sounds only play in the in-game (post-spawn) path — the same restriction as
+custom screen sounds. They have no effect during the pre-spawn blocking
+phase, since that phase runs before the player has a client-side audio
+context tied to a spawned entity.
+
+---
+
+## Brute-Force Protection
+
+Two independent, opt-in settings protect against repeated wrong-password
+attempts. Both are disabled by default.
+
+### Login attempt limit (`login_attempts`)
+
+Kicks the player after too many wrong passwords within a single login dialog
+session (the counter resets on each new connection).
+
+| Key | Description |
+|-----|-------------|
+| `enabled` | Master switch |
+| `max_tries` | Number of wrong attempts allowed before a kick (minimum 1) |
+
+The kick uses the `disconnect.too_many_attempts` message from the active
+language file.
+
+### IP ban (`ip_ban`)
+
+Tracks wrong-password attempts per IP address across sessions (not just one
+login dialog), and issues a temporary Bukkit IP ban once the threshold is
+crossed. Repeated offenses from the same IP escalate to longer ban durations.
+
+| Key | Description |
+|-----|-------------|
+| `enabled` | Master switch |
+| `threshold` | Wrong attempts from the same IP before the first ban (minimum 1) |
+| `ban_durations_seconds` | List of ban lengths in seconds, one per escalation level; the last value repeats for any further offense |
+
+The default escalation is `[600, 1800, 3600, 86400]` — 10 minutes, 30
+minutes, 1 hour, then 1 day for every offense after that. The ban reason
+shown to the player uses the `disconnect.ip_banned` message, with
+`{player_ip}` filled in.
+
+Both counters are tracked in memory and reset when the plugin restarts.
+
+---
+
 ## Custom Screens
 
 AuthMeBia includes a mini-framework for defining fully custom dialog screens that
@@ -218,6 +366,29 @@ before ever sending a dialog. Clients below `dialog.min_protocol_version`
 skip every AuthMeBia dialog and authenticate with AuthMe's plain `/login`
 and `/register` commands instead -- the freeze-then-kick never happens.
 See the `dialog.min_protocol_version` comment in `config.yml` for details.
+
+---
+
+## Platform Support (Paper / Folia)
+
+AuthMeBia detects at startup whether it is running on Folia (checking for
+`io.papermc.paper.threadedregions.RegionizedServer`) and switches every
+scheduled task — dialog timeouts, wait delays, IP bans, welcome image
+delivery — to Folia's region-aware `AsyncScheduler` / per-entity scheduler
+instead of the standard Bukkit scheduler. No configuration is needed; this is
+automatic. `/bia info` reports the detected platform (Paper, Folia, or plain
+Bukkit).
+
+### AuthMe built-in dialog conflict check
+
+AuthMe itself has its own optional native dialog feature
+(`settings.registration.dialog.preJoin.enable` /
+`settings.registration.dialog.postJoin.enable` in AuthMe's `config.yml`). If
+that is left enabled alongside AuthMeBia's dialogs, players would see two
+separate dialog systems fighting over the same login/register flow. On
+startup, AuthMeBia reads AuthMe's `config.yml` and logs a console warning if
+either of those settings is on, so the conflict is caught before players run
+into it. Disable them in AuthMe's own config to resolve the warning.
 
 ---
 

@@ -40,6 +40,7 @@ public class AuthMe implements Listener {
     private Method dsGetAuth;
     private Method authIsPremium;
     private Method authGetPremiumUuid;
+    private Method authGetEmail;
     private volatile boolean cachedPremiumEnabled = false;
 
     private Object emailService;
@@ -96,6 +97,7 @@ public class AuthMe implements Listener {
             Class<?> authClass = Class.forName("fr.xephi.authme.data.auth.PlayerAuth");
             authIsPremium = authClass.getMethod("isPremium");
             authGetPremiumUuid = authClass.getMethod("getPremiumUuid");
+            authGetEmail = authClass.getMethod("getEmail");
         } catch (Throwable t) {
             plugin.getLogger().info("AuthMe premium reflection unavailable; premium skip disabled (" + t + ")");
             dataSource = null;
@@ -610,6 +612,17 @@ public class AuthMe implements Listener {
         }
     }
 
+    public String getStoredEmail(String name) {
+        if (dataSource == null || dsGetAuth == null || authGetEmail == null || name == null) return null;
+        try {
+            Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(java.util.Locale.ROOT));
+            if (auth == null) return null;
+            return (String) authGetEmail.invoke(auth);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public void storeEmail(String name, String email) {
         if (dataSource == null || dsGetAuth == null || dsUpdateEmail == null || authSetEmail == null) return;
         try {
@@ -637,16 +650,30 @@ public class AuthMe implements Listener {
             return;
         }
         future.thenAccept(ok -> {
-            if (!ok) return;
-            runOnPlayer(player, () -> { clearBlindEffect(player); closeDialog(player); });
-            String email = pendingEmail.remove(player.getUniqueId());
-            if (email != null) {
-                runAsync(() -> storeEmail(player.getName(), email));
+            if (!ok) {
+                if (!player.isOnline()) return;
+                if (isAuthenticated(player)) {
+                    finishRegisterLogin(player);
+                } else {
+                    plugin.getLogger().warning("forceRegister for " + player.getName()
+                            + " did not fire LoginEvent in time; retrying forceLogin explicitly");
+                    doForceLogin(player, false);
+                }
+                return;
             }
-            if (plugin.cfg().welcomeImageEnabled() || plugin.cfg().discordEnabled()) {
-                runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
-            }
+            finishRegisterLogin(player);
         });
+    }
+
+    private void finishRegisterLogin(Player player) {
+        runOnPlayer(player, () -> { clearBlindEffect(player); closeDialog(player); });
+        String email = pendingEmail.remove(player.getUniqueId());
+        if (email != null) {
+            runAsync(() -> storeEmail(player.getName(), email));
+        }
+        if (plugin.cfg().welcomeImageEnabled() || plugin.cfg().discordEnabled()) {
+            runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
+        }
     }
 
     private void clearBlindEffect(Player player) {

@@ -89,6 +89,48 @@ public class Cfg {
         return config.getString("dialog.login.password_label", "Password");
     }
 
+    public boolean forgotPasswordEnabled() {
+        return config.getBoolean("dialog.login.forgot_password.enabled", false);
+    }
+
+    public Component forgotPasswordButton() {
+        return parse(config.getString("dialog.login.forgot_password.button", "<yellow>Forgot Password?</yellow>"));
+    }
+
+    public String forgotPasswordButtonSound() {
+        return config.getString("dialog.login.forgot_password.button_sound", "");
+    }
+
+    public Component forgotPasswordEmailTitle() {
+        return parse(config.getString("dialog.login.forgot_password.email_title", "<gold>Forgot Password</gold>"));
+    }
+
+    public Component forgotPasswordEmailContent() {
+        return parse(config.getString("dialog.login.forgot_password.email_content",
+                "<gray>Enter the email address registered to this account.</gray>"));
+    }
+
+    public String forgotPasswordEmailLabel() {
+        return config.getString("dialog.login.forgot_password.email_label", "Email");
+    }
+
+    public Component forgotPasswordSubmitButton() {
+        return parse(config.getString("dialog.login.forgot_password.submit_button", "<green>Send Code</green>"));
+    }
+
+    public String forgotPasswordSubmitSound() {
+        return config.getString("dialog.login.forgot_password.submit_sound", "");
+    }
+
+    public String forgotPasswordInvalidEmailError() {
+        return config.getString("dialog.login.forgot_password.invalid_email_error", "Incorrect email");
+    }
+
+    public Component forgotPasswordNoEmailMessage() {
+        return parse(config.getString("dialog.login.forgot_password.no_email_message",
+                "<red>No email is linked to this account. Please contact an admin.</red>"));
+    }
+
     public boolean dialogAllowClose() {
         return config.getBoolean("dialog.allow_close", true);
     }
@@ -210,6 +252,10 @@ public class Cfg {
 
     public int mainButtonWidth() {
         return clampWidth(config.getInt("dialog.button_width", 200));
+    }
+
+    public LinkButton.ButtonRowLayout mainButtonLayout() {
+        return LinkButton.ButtonRowLayout.parse(config.getString("dialog.button_layout"), LinkButton.ButtonRowLayout.VERTICAL);
     }
 
     public int inputWidth() {

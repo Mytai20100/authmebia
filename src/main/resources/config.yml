@@ -69,6 +69,16 @@ dialog:
   # Valid range: 1-1024.
   button_width: 200
 
+  # Arrangement of the main action buttons (Register/Login/Forgot Password/
+  # Agree/Logout, plus link buttons when links.position is not "separated")
+  # inside the register and login dialogs.
+  # vertical:   buttons are stacked one per row (default, current behavior).
+  # horizontal: buttons are placed side by side in a single row.
+  # Applies consistently to both the login dialog (Login, Forgot Password,
+  # Logout) and the register dialog (Register, Logout), since both share the
+  # same buildType() layout logic.
+  button_layout: vertical
+
   # Width in pixels of the text input fields (password/confirm password).
   # Valid range: 1-1024.
   input_width: 200
@@ -94,6 +104,40 @@ dialog:
     password_label: "Password"
     # Sound played when clicking the Login/Submit button.
     submit_sound: ""
+
+    forgot_password:
+      # Master switch for the self-service "Forgot Password?" button on the
+      # login dialog. Requires email verification to be usable: the flow
+      # looks up the email already stored on the account (set during
+      # registration when email.enabled is true) and emails a reset code to
+      # it via the same AuthMe SMTP settings used by email.* above. If the
+      # account has no email on file, the player is told to contact an admin
+      # instead, and nothing is sent.
+      enabled: false
+
+      # Label of the "Forgot Password?" button shown next to Login.
+      button: "<yellow>Forgot Password?</yellow>"
+      # Sound played when clicking the Forgot Password button.
+      button_sound: ""
+
+      # Title of the email-entry dialog (also reused for the "no email on
+      # file" notice dialog).
+      email_title: "<gold>Forgot Password</gold>"
+      # Body text of the email-entry dialog. Supports MiniMessage and \n.
+      email_content: "<gray>Enter the email address registered to this account.</gray>"
+      # Label of the email input field.
+      email_label: "Email"
+      # Label of the button that submits the entered email and sends the
+      # reset code.
+      submit_button: "<green>Send Code</green>"
+      # Sound played when clicking the Send Code button.
+      submit_sound: ""
+      # Error shown inline in the email field when the entered address is
+      # not a valid email, or does not match the one on file.
+      invalid_email_error: "Incorrect email"
+      # Message shown (in place of the email field) when the account has no
+      # email on file. Supports MiniMessage.
+      no_email_message: "<red>No email is linked to this account. Please contact an admin.</red>"
 
   # Label of the button that disconnects the player instead of submitting.
   logout_button: "<red>Logout</red>"
@@ -506,3 +550,5 @@ ip_ban:
   # uses the 1st value, the 2nd offense uses the 2nd value, and so on.
   # The last value is reused for any further offense beyond the list.
   ban_durations_seconds: [600, 1800, 3600, 86400]
+
+config_version: 1

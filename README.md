@@ -89,12 +89,14 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 - Pre-spawn dialog mode: the login or register window blocks the connection phase, so the player spawns already authenticated
 - Post-spawn dialog mode: the window appears after the player joins the world
 - Three auth input modes: password text field, numeric PIN grid, or per-digit slider
+- Button layout switch (`dialog.button_layout`): arrange the main action buttons vertically (stacked) or horizontally (side by side) in both the register and login dialogs
 
 **Authentication**
 - Premium bypass: players whose UUID matches a premium account stored in AuthMe are detected automatically and skip all dialogs entirely
 - TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
 - Captcha dialog synced with AuthMe's captcha setting
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
+- **Self-service "Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on file (set during email-verified registration), sends a reset code to it through AuthMe's SMTP config, and — once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
 - Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online
 - Server rules agreement checkbox shown to new players before their account is created
 - Login attempt limit with kick after too many wrong passwords
@@ -105,12 +107,15 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 - Bypass list: players added with `/bia add` skip all dialogs and fall back to AuthMe's own commands
 - Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`
 - Debug commands: preview individual dialogs in-game without going through the full login flow
+- Startup check that warns in the console if AuthMe's own built-in dialog (`settings.registration.dialog.preJoin/postJoin.enable`) is also enabled, to prevent two dialogs from appearing at once
 
 **Extras**
 - Link buttons inside dialogs (open URL, copy to clipboard)
+- Per-button click sounds: nearly every dialog button (submit, logout, agree, verify, resend, forgot password, custom screen buttons, etc.) can play its own Minecraft sound on click
 - Discord webhook notification on player join or first registration
 - Welcome image sent to the player after first login
 - ViaVersion support: players on older protocol versions fall back to AuthMe's normal flow automatically
+- Folia support: detects Folia at startup and automatically switches to its region-aware scheduler instead of the standard Bukkit scheduler
 
 ---
 
@@ -197,17 +202,36 @@ dialog:
   menu: true
   min_protocol_version: 771
   button_width: 200
+  # vertical (stacked) or horizontal (side by side)
+  button_layout: vertical
   input_width: 200
 
   register:
     title: "<#4287f5>Create Account</#4287f5>"
     content: ""
+    submit_sound: ""
 
   login:
     title: "<gold>Login</gold>"
     content: "<gold>Welcome back, {player}!</gold>"
+    submit_sound: ""
+
+    forgot_password:
+      # Self-service password reset via the email already on file.
+      # Requires email.enabled so an email is stored on the account.
+      enabled: false
+      button: "<yellow>Forgot Password?</yellow>"
+      button_sound: ""
+      email_title: "<gold>Forgot Password</gold>"
+      email_content: "<gray>Enter the email address registered to this account.</gray>"
+      email_label: "Email"
+      submit_button: "<green>Send Code</green>"
+      submit_sound: ""
+      invalid_email_error: "Incorrect email"
+      no_email_message: "<red>No email is linked to this account. Please contact an admin.</red>"
 
   logout_button: "<red>Logout</red>"
+  logout_sound: ""
   submit_register_button: "<green>Register</green>"
   submit_login_button: "<green>Login</green>"
   allow_close: true
@@ -222,12 +246,14 @@ auth_mode:
     confirm_button: "<green>Confirm</green>"
     delete_button: "<red>Delete</red>"
     button_width: 100
+    button_sound: ""
 
   slider:
     length: 4
     title: "<gold>Enter your code</gold>"
     confirm_button: "<green>Confirm</green>"
     button_width: 100
+    button_sound: ""
 
 auth_wait:
   wait: true
@@ -242,6 +268,7 @@ rule:
   content: ""
   checkbox_label: "<yellow>I have read and agree to the rules</yellow>"
   agree_button: "<green>Agree</green>"
+  agree_sound: ""
 
 discord:
   enabled: false
@@ -273,6 +300,7 @@ captcha:
   content: "<gray>Type the code below to continue:</gray>\n<white><bold>{code}</bold></white>"
   input_label: "Enter code"
   submit_button: "<green>Verify</green>"
+  submit_sound: ""
   trust_duration_seconds: 18000
 
 login_attempts:
@@ -290,6 +318,7 @@ recover:
   new_password_label: "New password"
   confirm_password_label: "Confirm password"
   submit_button: "<green>Set Password</green>"
+  submit_sound: ""
   success_message: "<green>Password updated successfully.</green>"
   mismatch_message: "<red>Passwords do not match. Try again.</red>"
 
@@ -302,7 +331,9 @@ email:
   verify_content: "<gray>A code was sent to {email}.\nResend available in {cooldown}s.</gray>"
   code_label: "Code"
   verify_button: "<green>Verify</green>"
+  verify_sound: ""
   resend_button: "<yellow>Resend code</yellow>"
+  resend_sound: ""
   invalid_email_message: "<red>Please enter a valid email address.</red>"
   send_failed_message: "<red>Could not send the email. Please contact an admin.</red>"
   wrong_code_error: "Incorrect code"
@@ -315,6 +346,7 @@ totp_2fa:
   content: "<gray>Enter your 6-digit authenticator app code:</gray>"
   input_label: "Authenticator code"
   submit_button: "<green>Verify</green>"
+  submit_sound: ""
   wrong_code_error: "Invalid code"
 
 # Custom dialog screens. Show with: /bia screen <id> [player]

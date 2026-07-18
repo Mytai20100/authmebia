@@ -23,6 +23,20 @@ public final class LinkButton {
         }
     }
 
+    public enum ButtonRowLayout {
+        HORIZONTAL,
+        VERTICAL;
+
+        public static ButtonRowLayout parse(String raw, ButtonRowLayout fallback) {
+            if (raw == null) return fallback;
+            try {
+                return ButtonRowLayout.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                return fallback;
+            }
+        }
+    }
+
     private final boolean enabled;
     private final Component label;
     private final Action action;
