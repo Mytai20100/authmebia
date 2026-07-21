@@ -46,9 +46,23 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 </details>
 
 <details>
+<summary>Add Email</summary>
+
+![Add email dialog](img/screen_addemail.png)
+
+</details>
+
+<details>
 <summary>Password Recovery</summary>
 
 ![Password recovery dialog](img/screen_recovery.png)
+
+</details>
+
+<details>
+<summary>Forgot Password but email not found dialog</summary>
+
+![Forgot Password but email not found dialog](img/screen_emailnah.png)
 
 </details>
 
