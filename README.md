@@ -39,6 +39,13 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 </details>
 
 <details>
+<summary>2FA</summary>
+
+![2FA dialog](img/screen_2fa.png)
+
+</details>
+
+<details>
 <summary>Email Verification</summary>
 
 ![Email verification dialog](img/screen_email.png)
