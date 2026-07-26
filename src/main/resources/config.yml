@@ -23,6 +23,89 @@ lang: en
 # plugins/AuthMeBia/data/<uuid>/player.yml, and managed entirely through
 # those two commands. See doc/README.md for the full file format.
 
+# Automatic authentication skip for already-verified identities.
+# Both flags default to false. With both false, behavior is identical to not
+# having this section at all.
+auto:
+  # If true, a connecting Java player whose current UUID matches the premium
+  # UUID already stored on their AuthMe account (see AuthMe's own
+  # settings.enablePremium premium-conversion feature) skips the register/
+  # login dialog entirely and is logged in automatically. This reuses
+  # AuthMe's own premium-UUID match check; it does not introduce a new way
+  # to determine who counts as premium. If the UUID does not match, the
+  # player falls through to the normal dialog with no indication that a
+  # premium check happened.
+  #
+  # On the player's first join via this path, they are shown a mandatory
+  # password-reset dialog (see dialog.premium below) so their AuthMe
+  # password is not left as whatever placeholder was used internally.
+  premium_autologin: false
+
+  # If true, a connecting Bedrock player (via Geyser/Floodgate) skips the
+  # register/login dialog automatically. How that identity is trusted is
+  # controlled by bedrock_mode below.
+  #
+  # Requires Floodgate to be installed. If Floodgate is missing, this has no
+  # effect and the player falls through to the normal dialog (or the
+  # Bedrock dialog variant below).
+  #
+  # On the player's first join via this path, they are shown the same
+  # mandatory password-reset dialog as premium_autologin.
+  bedrock_autologin: false
+
+  # Which identity check bedrock_autologin trusts. Only has any effect if
+  # bedrock_autologin is true.
+  #
+  #   link   (default) - Only trust a Bedrock connection if Floodgate
+  #                       reports the account as linked to a verified Java
+  #                       premium account (the player used Floodgate's own
+  #                       /linkaccount flow, or was auto-linked by
+  #                       Floodgate's own auto-link configuration). Being a
+  #                       Floodgate player by itself is NOT treated as proof
+  #                       of identity and never triggers this skip on its
+  #                       own, since Floodgate does not re-verify Xbox Live
+  #                       ownership on every join, only at link time. This
+  #                       is the safe option.
+  #
+  #   geyser            - Trust ANY connection Floodgate reports as a
+  #                       Bedrock/Geyser player, with no linked-account
+  #                       requirement at all.
+  #                       WARNING: THIS IS NOT SAFE by itself. Floodgate can
+  #                       be configured to accept Bedrock connections
+  #                       without verifying the player's Xbox Live account
+  #                       (Geyser's "offline"/auth-type: offline mode), in
+  #                       which case a Bedrock player's identity is
+  #                       whatever they claim it to be, the same as a
+  #                       cracked Java client. If you use this mode, you
+  #                       should also enable Geyser's own online
+  #                       authentication (auth-type: online in Geyser's
+  #                       config.yml) so Bedrock players actually go
+  #                       through real Xbox Live sign-in before ever
+  #                       reaching this plugin. Without that, this mode
+  #                       lets anyone auto-login as any Bedrock identity.
+  bedrock_mode: link
+
+  # If true, and AuthMe's own session feature would authenticate a
+  # returning player automatically (see settings.sessions.enabled and
+  # settings.sessions.timeout in AuthMe's own config.yml -- when enabled, a
+  # player who logs in successfully is remembered by IP, and reconnecting
+  # with the same IP within the timeout skips needing to log in again),
+  # AuthMeBia skips its register/login dialog entirely for that join.
+  #
+  # This reproduces AuthMe's own session comparison (matching IP and
+  # timeout against the player's last recorded login) rather than asking
+  # AuthMe whether it already decided the player is authenticated --
+  # AuthMe does not actually evaluate its session feature until later in
+  # the join than AuthMeBia's dialog decision is made, so there is nothing
+  # yet to ask at that point. It has no effect at all unless AuthMe's own
+  # settings.sessions.enabled is also true; if that is false (the AuthMe
+  # default), this flag does nothing.
+  #
+  # Default: true. When true, a returning player within an active AuthMe
+  # session skips AuthMeBia's dialog entirely, matching AuthMe's own
+  # pre-join dialog session-skip behavior.
+  session_autologin: true
+
 dialog:
   # Master switch for the register/login dialog feature.
   enabled: true
@@ -82,6 +165,29 @@ dialog:
   # Width in pixels of the text input fields (password/confirm password).
   # Valid range: 1-1024.
   input_width: 200
+
+  # Bedrock (Geyser/Floodgate) players use the exact same register/login/
+  # recover/rule/captcha dialogs as Java players by default; the settings
+  # above this line apply to both. These extra keys let you override a few
+  # Bedrock-specific details, since Bedrock's dialog renderer has a smaller
+  # usable button/text area on some devices. Leave enabled: false to keep
+  # everything identical between Java and Bedrock.
+  bedrock:
+    # If true, the overrides below are applied for players detected as
+    # Bedrock (via Floodgate). If false, Bedrock players use the normal
+    # dialog.* settings unchanged.
+    enabled: false
+
+    # Overrides dialog.button_width for Bedrock players only.
+    button_width: 300
+
+    # Overrides dialog.input_width for Bedrock players only.
+    input_width: 300
+
+    # Overrides auth_mode.mode for Bedrock players only. Empty string means
+    # "use the same auth_mode.mode as Java players" (default).
+    # Options: "" (inherit), password, pin, slider
+    auth_mode_override: ""
 
   register:
     # Title shown at the top of the registration dialog.
@@ -151,18 +257,46 @@ dialog:
   # Label of the button that submits the login form.
   submit_login_button: "<green>Login</green>"
 
-  # If false, re-opens the auth dialog immediately when the player dismisses
-  # it (e.g. via ESC or clicking outside). This prevents bypassing auth by
-  # closing the dialog. Only applies when dialog.menu is false (post-spawn mode);
-  # in pre-spawn mode (menu: true) the dialog already blocks the connection, so
-  # this setting has no effect there.
+  # If false, the dialog cannot be dismissed with the escape key, and if it
+  # is dismissed some other way (e.g. opening another screen), it is
+  # re-opened shortly after (see reopen_delay_ticks below). This prevents
+  # bypassing auth by closing the dialog. Only applies when dialog.menu is
+  # false (post-spawn mode); in pre-spawn mode (menu: true) the dialog
+  # already blocks the connection, so this setting has no effect there.
+  #
+  # Note on how the reopen is detected: the Minecraft dialog protocol has
+  # no packet for "the player closed this dialog" -- the server is only
+  # ever told about button clicks, never about a dismissal with no click.
+  # So this cannot react the instant the dialog closes; instead it checks
+  # again after reopen_delay_ticks and re-shows the dialog if the player is
+  # still unauthenticated. A player who is quick can therefore be
+  # dialog-free for up to that many ticks after closing it, but cannot
+  # actually do anything in that window since AuthMe itself still blocks
+  # movement/actions/commands for unauthenticated players.
   allow_close: true
+
+  # Delay, in ticks (20 ticks = 1 second), before checking whether an
+  # in-game dialog with allow_close: false above is still supposed to be on
+  # screen, and re-showing it if the player closed it without clicking a
+  # button. Only used when allow_close is false. Valid range: 1-200.
+  reopen_delay_ticks: 10
 
 # Authentication input mode. Lets players authenticate with a numeric PIN or
 # a per-digit slider grid instead of typing a password. The chosen mode
 # applies to BOTH the register and login dialogs. State for pin/slider entry
 # is tracked server-side per player UUID (never sent to the client as hidden
 # dialog fields).
+#
+# Clients whose protocol version is below dialog.min_protocol_version cannot
+# render dialog packets at all (dialogs are a vanilla 1.21.6+ feature). If
+# mode is pin or slider, those clients automatically get an inventory-GUI
+# numpad (a chest-style menu with number items) as a fallback instead, since
+# there is no way to type a PIN/slider code through AuthMe's plain chat
+# commands. This fallback only applies post-spawn (dialog.menu: false or
+# after a pre-spawn dialog would otherwise be skipped); mode: password is
+# unaffected, since AuthMe's own /login and /register commands already work
+# for plain passwords regardless of client version. Nothing to configure
+# here -- this activates automatically whenever it's needed.
 auth_mode:
   # Auth input mode for login and register dialogs.
   # Options:
@@ -342,7 +476,7 @@ captcha:
 login_attempts:
   # If true, kicks the player after too many wrong password attempts in a
   # single login dialog session.
-  enabled: false
+  enabled: true
 
   # Number of wrong password attempts allowed before the player is kicked.
   max_tries: 5
@@ -350,7 +484,7 @@ login_attempts:
 login_timeout:
   # If true, kicks or re-shows the dialog if the player hasn't authenticated
   # within the time limit after the auth dialog is first shown.
-  enabled: false
+  enabled: true
 
   # Time in seconds the player has to complete authentication before being
   # kicked. Set to 0 to disable the kick and just re-show the dialog instead.
@@ -387,6 +521,39 @@ recover:
   # Message sent to the player (chat) on successful reset.
   # Supports MiniMessage and {player}.
   success_message: "<green>Password updated successfully.</green>"
+
+  # Message sent to the player (chat) if the two fields don't match.
+  # Supports MiniMessage.
+  mismatch_message: "<red>Passwords do not match. Try again.</red>"
+
+premium:
+  # Password-set dialog shown exactly once, the first time a player joins
+  # via auto.premium_autologin or auto.bedrock_autologin. AuthMe still needs
+  # a password on file for the account internally; this dialog lets the
+  # player choose it themselves instead of it being left as an internal
+  # placeholder. Has no effect if both auto.premium_autologin and
+  # auto.bedrock_autologin are false.
+
+  # Title of the dialog. Supports MiniMessage.
+  title: "<gold>Set Your Password</gold>"
+
+  # Body text. Supports MiniMessage and \n.
+  content: "<gray>You were signed in automatically. Please set a password for your account (used if you ever join from a non-verified client).</gray>"
+
+  # Label for the new password input field.
+  new_password_label: "New password"
+
+  # Label for the confirm password input field.
+  confirm_password_label: "Confirm password"
+
+  # Label of the submit button. Supports MiniMessage.
+  submit_button: "<green>Set Password</green>"
+  # Sound played when clicking the Set Password button.
+  submit_sound: ""
+
+  # Message sent to the player (chat) on successful set.
+  # Supports MiniMessage and {player}.
+  success_message: "<green>Password set successfully.</green>"
 
   # Message sent to the player (chat) if the two fields don't match.
   # Supports MiniMessage.
@@ -536,6 +703,68 @@ custom_screens:
   #       action: command
   #       value: "/rules"
 
+# Custom toast notifications (the small achievement-style popup in the top
+# right corner of the screen). Each entry is shown once per matching player
+# event.
+#
+# IMPORTANT client-side limitation: every vanilla advancement toast has two
+# lines. The small line above is drawn entirely by the client from the
+# "frame" value below and is NOT otherwise configurable -- it always reads
+# "Advancement Made!" (frame: task), "Goal Reached!" (frame: goal), or
+# "Challenge Complete!" (frame: challenge), translated into the viewing
+# player's own client language (e.g. "Da hoan thanh nhiem vu" on a
+# Vietnamese client for the task frame). The larger line below is what
+# "title" below actually controls. There is no vanilla mechanism to remove
+# the small line entirely; this applies to every plugin that uses
+# advancement toasts, not just this one.
+#
+# Each toast supports:
+#   name    - unique identifier for this toast (used only for logging)
+#   check   - which event triggers this toast. One of:
+#               first_register     - the player's very first successful registration
+#               first_login        - the player's very first successful login
+#               first_message      - the player's first chat message this session
+#               first_advancement  - the player's first advancement/achievement this session
+#   title   - toast title, supports MiniMessage. Rendered as the larger,
+#             bottom line of the toast (see the frame note above for the
+#             smaller line above it, which frame controls instead).
+#   content - toast description text, supports MiniMessage
+#   icon    - Minecraft item id shown on the toast, e.g. minecraft:diamond
+#   sound   - Minecraft sound played when the toast appears.
+#             Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
+#   delay   - how long the toast stays visible, in seconds (approximate)
+#   frame   - one of: task, goal, challenge. Controls only the small,
+#             client-drawn header line above the title (see the note
+#             above); does not affect title or content. Default: task.
+#             Changing frame on a toast that already registered earlier in
+#             the current server run requires a full restart to take
+#             effect (a full restart is also required after changing
+#             title/icon/content on an already-registered toast -- this is
+#             an existing Bukkit advancement-registration limitation, not
+#             specific to frame).
+notifications:
+  toasts:
+    - name: welcome_toast
+      check: first_register
+      title: "<gold>Welcome!</gold>"
+      content: "<gray>Thanks for joining the server.</gray>"
+      icon: "minecraft:player_head"
+      sound: "minecraft:entity.player.levelup 0.6 1.0"
+      delay: 5
+      frame: task
+
+# Optional integrations with third-party item/resource-pack plugins. Each
+# integration is independent and self-checks whether the target plugin is
+# actually installed; if it is not, that integration silently does nothing
+# and never affects login/registration.
+integrations:
+  itemsadder:
+    enabled: false
+  nexomc:
+    enabled: false
+  oraxen:
+    enabled: false
+
 ip_ban:
   # If true, temporarily bans an IP address after repeated wrong password
   # attempts across login sessions from that IP (spam/brute-force
@@ -551,4 +780,4 @@ ip_ban:
   # The last value is reused for any further offense beyond the list.
   ban_durations_seconds: [600, 1800, 3600, 86400]
 
-config_version: 1
+config_version: 2

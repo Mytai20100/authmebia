@@ -1,9 +1,9 @@
 name: AuthMeBia
-description: $description
-version: '0.0.5'
+description: A addons for authme reload that allows players have a expermental dialog login/register.
+version: '0.0.6'
 folia-supported: true
 main: com.authmebia.AuthMeBia
-loader: com.authmebia.AuthMeBiaLoader
+loader: com.authmebia.loader.AuthMeBiaLoader
 api-version: '1.21'
 load: POSTWORLD
 

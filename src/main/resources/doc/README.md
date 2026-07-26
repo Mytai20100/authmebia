@@ -24,6 +24,19 @@ All text fields in `config.yml` and all language files support full
 Use `{player}` anywhere as a placeholder for the player's name.
 Use `\n` inside any string to insert a line break.
 
+### PlaceholderAPI
+
+If PlaceholderAPI is installed, every text field that goes through the
+plugin's normal text-rendering path (dialog titles, content, button labels,
+error messages, chat messages) also resolves `%placeholder%` expansions from
+any installed PlaceholderAPI extension (e.g. LuckPerms prefixes, Vault
+ranks), on top of `{player}` substitution and MiniMessage formatting.
+
+This only applies while text is being rendered for a specific player (the
+call is scoped to that render, not global), and is a soft dependency: if
+PlaceholderAPI is not installed, or resolution fails for any reason, the
+text is used unchanged with no error.
+
 ---
 
 ## Language / Localization (`lang/`)
@@ -208,17 +221,18 @@ context tied to a spawned entity.
 
 ## Brute-Force Protection
 
-Two independent, opt-in settings protect against repeated wrong-password
-attempts. Both are disabled by default.
+Two independent settings protect against repeated wrong-password attempts.
+`login_attempts` is enabled by default; `ip_ban` is opt-in (disabled by
+default).
 
 ### Login attempt limit (`login_attempts`)
 
 Kicks the player after too many wrong passwords within a single login dialog
-session (the counter resets on each new connection).
+session (the counter resets on each new connection). Enabled by default.
 
 | Key | Description |
 |-----|-------------|
-| `enabled` | Master switch |
+| `enabled` | Master switch. Default: `true` |
 | `max_tries` | Number of wrong attempts allowed before a kick (minimum 1) |
 
 The kick uses the `disconnect.too_many_attempts` message from the active
@@ -348,6 +362,80 @@ the pre-spawn blocking phase.
 Tab completion is available for `<id>` (lists all configured screen IDs) and
 `<player>` (lists online players). The same tab completion applies to
 `/bia add <player>`, `/bia rm <player>`, and `/bia recover <player>`.
+
+---
+
+## Toast Notifications
+
+AuthMeBia can show the small vanilla advancement-style toast popup in the
+corner of the screen on certain player milestones. Each toast is defined in
+`notifications.toasts` in `config.yml`.
+
+### Defining a toast
+
+```yaml
+notifications:
+  toasts:
+    - name: welcome_toast
+      check: first_register
+      title: "<gold>Welcome!</gold>"
+      content: "<gray>Thanks for joining the server.</gray>"
+      icon: "minecraft:player_head"
+      sound: "minecraft:entity.player.levelup 0.6 1.0"
+      delay: 5
+      frame: task
+```
+
+### Toast fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | Identifier, used for logging and with `/bia notifier` |
+| `check` | string | required | Which event triggers this toast (see below) |
+| `title` | string | `""` | Larger, bottom line of the toast. Full MiniMessage. |
+| `content` | string | `""` | Toast description text. Full MiniMessage. |
+| `icon` | string | required | Minecraft item id shown on the toast, e.g. `minecraft:diamond` |
+| `sound` | string | `""` | Sound played when the toast appears (see sound format above) |
+| `delay` | int | required | How long the toast stays visible, in seconds (approximate) |
+| `frame` | string | `task` | `task`, `goal`, or `challenge` — see the client limitation note below |
+
+### `check` values
+
+| Value | Fires on |
+|-------|----------|
+| `first_register` | The player's very first successful registration |
+| `first_login` | The player's very first successful login |
+| `first_message` | The player's first chat message this session |
+| `first_advancement` | The player's first advancement/achievement this session |
+
+Each toast only ever fires once per player per `check`.
+
+### Client-side limitation on `frame`
+
+Every vanilla advancement toast has two lines. The small line above is drawn
+entirely by the client from `frame` and is not otherwise configurable — it
+always reads "Advancement Made!" (`task`), "Goal Reached!" (`goal`), or
+"Challenge Complete!" (`challenge`), translated into the viewing player's own
+client language. The larger line is what `title` controls. There is no
+vanilla mechanism to remove the small line entirely.
+
+Changing `frame` on a toast that already registered earlier in the current
+server run requires a full restart to take effect (this also applies to
+changing `title`/`icon`/`content` on an already-registered toast — an
+existing Bukkit advancement-registration limitation, not specific to this
+plugin).
+
+### Previewing a toast (`/bia notifier`)
+
+```
+/bia notifier <toast_name> <player> show [seconds]
+```
+
+Shows the named toast to an online player immediately, for testing. This
+never touches the toast's persisted "already shown" state, so previewing a
+toast never affects whether it still fires for real later. `[seconds]`
+optionally overrides the configured `delay` for this preview only. Requires
+OP. Tab completion lists configured toast names and online players.
 
 ---
 

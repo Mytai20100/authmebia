@@ -1,7 +1,7 @@
 package com.authmebia.api;
 
 import com.authmebia.AuthMeBia;
-import com.authmebia.Discord;
+import com.authmebia.api.Discord;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

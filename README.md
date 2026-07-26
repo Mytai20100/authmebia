@@ -102,6 +102,11 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 - AuthMe Reloaded 6.0.0
 - Java 21
 
+**Optional, only needed for specific features:**
+- Floodgate — required for `auto.bedrock_autologin` and the Bedrock dialog overrides (`dialog.bedrock`)
+- ItemsAdder / NexoMC / Oraxen — only needed if the corresponding `integrations.*` entry is enabled
+- PlaceholderAPI — only needed if you want `%placeholder%` expansions inside config.yml/lang text; without it, `{player}` substitution and MiniMessage formatting still work normally
+
 ---
 
 ## Features
@@ -110,27 +115,40 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 - Pre-spawn dialog mode: the login or register window blocks the connection phase, so the player spawns already authenticated
 - Post-spawn dialog mode: the window appears after the player joins the world
 - Three auth input modes: password text field, numeric PIN grid, or per-digit slider
+- **Old-client numpad fallback**: clients whose protocol version can't render dialogs at all (pre-1.21.6) get an inventory-GUI numpad instead when `auth_mode.mode` is `pin` or `slider`, since there's otherwise no way to type a code through AuthMe's plain chat commands. Works post-spawn only; uses the exact same wrong-code/attempt-limit/2FA logic as the normal PIN/slider dialog
 - Button layout switch (`dialog.button_layout`): arrange the main action buttons vertically (stacked) or horizontally (side by side) in both the register and login dialogs
 
 **Authentication**
 - Premium bypass: players whose UUID matches a premium account stored in AuthMe are detected automatically and skip all dialogs entirely
+- **Premium auto-login** (`auto.premium_autologin`, off by default): goes a step further than the premium bypass above — a matching premium UUID is automatically `forceRegister`'d (if needed) and `forceLogin`'d with no dialog at all, then shown a one-time mandatory password-set dialog so the account still has a real AuthMe password on file
+- **Bedrock auto-login** (`auto.bedrock_autologin`, off by default): the same automatic login, but for Bedrock players connecting through Geyser/Floodgate. `auto.bedrock_mode` controls how much this trusts: `link` (default, safe) only applies if Floodgate reports the player's account as linked to a verified Java premium account; `geyser` (opt-in, unsafe unless Geyser's own online auth-type is enabled) trusts any Bedrock/Geyser connection with no linked-account check at all
+- **Bedrock dialog support**: Bedrock players see the same register/login/recover/rule/captcha dialogs as Java players, reusing all the same logic. `dialog.bedrock` lets you optionally override button width, input width, and the auth input mode (password/PIN/slider) just for Bedrock clients, since some Bedrock devices have a smaller usable dialog area
+- **Session auto-login** (`auto.session_autologin`, on by default): skips the dialog entirely for a returning player that AuthMe's own session feature (`settings.sessions.enabled`/`timeout` in AuthMe's own config.yml) would already authenticate by matching IP and timeout. This reproduces AuthMe's own session comparison rather than asking AuthMe whether it already decided, since AuthMe does not evaluate its session feature until later in the join than this plugin's dialog decision is made. Has no effect at all unless AuthMe's own session feature is also enabled
 - TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
 - Captcha dialog synced with AuthMe's captcha setting
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
 - **Self-service "Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on file (set during email-verified registration), sends a reset code to it through AuthMe's SMTP config, and — once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
-- Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online
+- Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online. The reset dialog now follows `auth_mode.mode` (password/PIN/slider), matching the register and login dialogs instead of always showing a text field
 - Server rules agreement checkbox shown to new players before their account is created
 - Login attempt limit with kick after too many wrong passwords
 - Login timeout with optional kick or re-show of the dialog
 - IP ban with escalating ban durations after repeated failed logins across sessions
 
+**Notifications**
+- Custom toast notifications (`notifications.toasts`): show the small achievement-style popup in the corner of the screen on `first_register`, `first_login`, `first_message`, or `first_advancement`, with a configurable title, description, item icon, sound, and advancement frame (`task`/`goal`/`challenge`). Each toast only ever fires once per player
+- `/bia notifier <toast> <player> show [seconds]` lets an admin preview any configured toast on an online player without touching its persisted "already shown" state, so testing never affects whether it fires for real later
+
+**Third-party item plugin integrations**
+- Optional, self-checking integrations with ItemsAdder, NexoMC, and Oraxen (`integrations.*`, all off by default). Each one only activates if the corresponding plugin is actually installed and its API is loadable; if it isn't, the integration quietly disables itself without affecting login/registration in any way
+
 **Admin tools**
 - Bypass list: players added with `/bia add` skip all dialogs and fall back to AuthMe's own commands
-- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`
+- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command
 - Debug commands: preview individual dialogs in-game without going through the full login flow
 - Startup check that warns in the console if AuthMe's own built-in dialog (`settings.registration.dialog.preJoin/postJoin.enable`) is also enabled, to prevent two dialogs from appearing at once
 
 **Extras**
+- PlaceholderAPI support: any config.yml or lang text field can use `%placeholder%` expansions from installed PlaceholderAPI extensions (e.g. LuckPerms prefixes, Vault ranks), on top of the plugin's own `{player}` substitution and MiniMessage formatting. Only active while rendering text for a specific player, and never throws or blocks if PlaceholderAPI is not installed
 - Link buttons inside dialogs (open URL, copy to clipboard)
 - Per-button click sounds: nearly every dialog button (submit, logout, agree, verify, resend, forgot password, custom screen buttons, etc.) can play its own Minecraft sound on click
 - Discord webhook notification on player join or first registration
@@ -151,6 +169,7 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 | `/bia recover <player>` | `bia.admin.recover` | Force password reset on next login |
 | `/bia screen <id> [player]` | OP | Show a custom screen to a player |
 | `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game |
+| `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state |
 
 Debug features: `captcha`, `email`, `register`, `login`, `wait`, `recover`, `rule`.
 Use `show` with `captcha` or `email` to preview those dialogs directly without going through the login flow.
@@ -163,14 +182,23 @@ AuthMeBia hooks into AuthMe Reloaded through reflection rather than a compile-ti
 
 | Class | Usage |
 |---|---|
-| `fr.xephi.authme.api.v3.AuthMeApi` | Core operations: isRegistered, forceLogin, forceRegister, forceLogout, checkPassword, changePassword, isAuthenticated, registerPlayer |
-| `fr.xephi.authme.data.auth.PlayerAuth` | Read player data: isPremium, getPremiumUuid, getTotpKey, setEmail |
-| `fr.xephi.authme.datasource.DataSource` | Fetch PlayerAuth records, persist email changes |
+| `fr.xephi.authme.api.v3.AuthMeApi` | Core operations: isRegistered, forceLogin, forceRegister, forceLogout, checkPassword, changePassword, isAuthenticated, registerPlayer, getLastIp, getLastLoginTime |
+| `fr.xephi.authme.data.auth.PlayerAuth` | Read player data: isPremium, getPremiumUuid, getEmail, getTotpKey, setEmail |
+| `fr.xephi.authme.data.auth.PlayerCache` | isAuthenticated(name) — used for in-memory authentication checks |
+| `fr.xephi.authme.datasource.DataSource` | Fetch PlayerAuth records (getAuth), check `auto.session_autologin` state (hasSession), persist email changes (updateEmail) |
 | `fr.xephi.authme.mail.EmailService` | Check SMTP availability, send verification codes |
 | `fr.xephi.authme.security.totp.TotpAuthenticator` | Verify TOTP codes for 2FA dialog (`checkCode(PlayerAuth, String)`) |
 | `fr.xephi.authme.events.LoginEvent` | Detect successful login to complete async futures |
 | `fr.xephi.authme.events.RegisterEvent` | Detect successful registration |
 | `fr.xephi.authme.events.FailedLoginEvent` | Detect failed login |
+
+AuthMeBia also optionally bridges to Floodgate's API the same way (reflection, no compile-time dependency), only when `auto.bedrock_autologin` or a Bedrock dialog override is in use:
+
+| Class | Usage |
+|---|---|
+| `org.geysermc.floodgate.api.FloodgateApi` | Detect Floodgate/Bedrock connections |
+| `org.geysermc.floodgate.api.player.FloodgatePlayer` | Look up a Bedrock player's linked account |
+| `org.geysermc.floodgate.util.LinkedPlayer` | Read the verified linked Java UUID, if any |
 
 ---
 
@@ -218,6 +246,20 @@ The built jar is placed in `build/libs/`. Copy it to your server's `plugins/` fo
 # Reload with /bia reload.
 lang: en
 
+# Automatic authentication skip for already-verified identities.
+# Both flags default to false. With both false, behavior is identical to not
+# having this section at all.
+auto:
+  premium_autologin: false
+  bedrock_autologin: false
+  # link (default, safe) or geyser (unsafe unless Geyser's own online
+  # auth-type is enabled -- see the full comment in config.yml)
+  bedrock_mode: link
+  # Skips the dialog for a player already authenticated by AuthMe's own
+  # session feature. No effect unless AuthMe's settings.sessions.enabled
+  # is also true. Default: true.
+  session_autologin: true
+
 dialog:
   enabled: true
   menu: true
@@ -230,11 +272,14 @@ dialog:
   register:
     title: "<#4287f5>Create Account</#4287f5>"
     content: ""
+    password_label: "Password"
+    confirm_password_label: "Confirm Password"
     submit_sound: ""
 
   login:
     title: "<gold>Login</gold>"
     content: "<gold>Welcome back, {player}!</gold>"
+    password_label: "Password"
     submit_sound: ""
 
     forgot_password:
@@ -256,6 +301,18 @@ dialog:
   submit_register_button: "<green>Register</green>"
   submit_login_button: "<green>Login</green>"
   allow_close: true
+  # Only used when allow_close is false; delay in ticks before re-checking
+  # and re-showing an in-game dialog the player closed without a click.
+  reopen_delay_ticks: 10
+
+  # Optional overrides applied only to Bedrock (Geyser/Floodgate) players.
+  # Leave enabled: false to keep Bedrock identical to Java.
+  bedrock:
+    enabled: false
+    button_width: 300
+    input_width: 300
+    # "" = inherit auth_mode.mode. Options: "", password, pin, slider
+    auth_mode_override: ""
 
 auth_mode:
   # password | pin | slider
@@ -325,11 +382,11 @@ captcha:
   trust_duration_seconds: 18000
 
 login_attempts:
-  enabled: false
+  enabled: true
   max_tries: 5
 
 login_timeout:
-  enabled: false
+  enabled: true
   seconds: 60
   kick_message: "<red>Authentication timed out. Please reconnect.</red>"
 
@@ -341,6 +398,19 @@ recover:
   submit_button: "<green>Set Password</green>"
   submit_sound: ""
   success_message: "<green>Password updated successfully.</green>"
+  mismatch_message: "<red>Passwords do not match. Try again.</red>"
+
+# Password-set dialog shown once, the first time a player joins via
+# auto.premium_autologin or auto.bedrock_autologin. Has no effect if both
+# of those are false.
+premium:
+  title: "<gold>Set Your Password</gold>"
+  content: "<gray>You were signed in automatically. Please set a password for your account (used if you ever join from a non-verified client).</gray>"
+  new_password_label: "New password"
+  confirm_password_label: "Confirm password"
+  submit_button: "<green>Set Password</green>"
+  submit_sound: ""
+  success_message: "<green>Password set successfully.</green>"
   mismatch_message: "<red>Passwords do not match. Try again.</red>"
 
 email:
@@ -355,6 +425,7 @@ email:
   verify_sound: ""
   resend_button: "<yellow>Resend code</yellow>"
   resend_sound: ""
+  resend_button_cooldown: "<gray>Resend ({cooldown}s)</gray>"
   invalid_email_message: "<red>Please enter a valid email address.</red>"
   send_failed_message: "<red>Could not send the email. Please contact an admin.</red>"
   wrong_code_error: "Incorrect code"
@@ -374,13 +445,18 @@ totp_2fa:
 # Button actions: close, open_url, copy
 custom_screens:
   - id: example
+    enabled: true
     title: "<gold>Server Notice</gold>"
     content: "<gray>Welcome to the server, {player}!\nHave fun playing.</gray>"
     allow_close: true
     button_width: 200
+    # command (default), postjoin, or prejoin -- see doc/README.md
+    trigger: command
+    sound_on_show: ""
     buttons:
       - label: "<green>OK</green>"
         action: close
+        sound: ""
       - label: "<#5865F2>Discord</#5865F2>"
         action: open_url
         value: "https://discord.gg/abc"
@@ -390,6 +466,36 @@ ip_ban:
   enabled: false
   threshold: 10
   ban_durations_seconds: [600, 1800, 3600, 86400]
+```
+
+</details>
+
+<details>
+<summary>notifications.toasts and integrations</summary>
+
+```yaml
+# Custom toast notifications shown once per player per check.
+notifications:
+  toasts:
+    - name: welcome_toast
+      check: first_register
+      title: "<gold>Welcome!</gold>"
+      content: "<gray>Thanks for joining the server.</gray>"
+      icon: "minecraft:player_head"
+      sound: "minecraft:entity.player.levelup 0.6 1.0"
+      delay: 5
+      frame: task
+
+# Optional integrations with third-party item/resource-pack plugins.
+# Each self-checks whether the target plugin is installed; if not, it does
+# nothing and never affects login/registration.
+integrations:
+  itemsadder:
+    enabled: false
+  nexomc:
+    enabled: false
+  oraxen:
+    enabled: false
 ```
 
 </details>
