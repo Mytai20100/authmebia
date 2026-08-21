@@ -182,7 +182,7 @@ This applies consistently to every main button in both dialogs — Login,
 Forgot Password, and Logout in the login dialog; Register and Logout in the
 register dialog — plus any link buttons shown alongside them when
 `links.position` is not `separated`. Custom screens and other standalone
-dialogs (captcha, 2FA, recover, wait, rule) are unaffected and keep their own
+dialogs (captcha, 2FA, recover, rule) are unaffected and keep their own
 layout.
 
 ---
@@ -259,6 +259,51 @@ Both counters are tracked in memory and reset when the plugin restarts.
 
 ---
 
+## Custom Icons (`<icons:name>`)
+
+Any MiniMessage string anywhere in `config.yml` (dialog titles, content,
+button labels, custom screen text, etc.) can show a small inline icon by
+placing the tag `<icons:name>` wherever you want it to appear — the tag is
+replaced in place, so position in the string is entirely up to you:
+
+```yaml
+title: "<icons:trial_key> <gold>Login</gold>"
+title: "<gold>Login</gold> <icons:trial_key>"
+content: "Welcome!\n<icons:trial_key> Read the rules below."
+```
+
+Each icon is defined once under `custom_icons:` in `config.yml`, keyed by the
+name used after `icons:` in the tag:
+
+```yaml
+custom_icons:
+  trial_key:
+    type: sprite
+    atlas: items
+    sprite: item/trial_key
+```
+
+### Icon types
+
+| `type` | Description | Fields |
+|--------|-------------|--------|
+| `sprite` | An icon from a texture atlas — the same kind of icon vanilla uses for items/effects in its own UI. | `atlas` (default `items`), `sprite` (e.g. `item/trial_key`) |
+| `player_head` | A player's head. | `player` (default `{player}`, the viewing player) |
+| `item` | A full item icon, including custom model data/enchant glow via the item itself. | `material` (a Bukkit `Material` name), `show_decorations` (default `true`), `show_tooltip` (default `true`), `width`/`height` (default `16`) |
+
+Only `sprite` and `player_head` icons can be placed inline via
+`<icons:name>` — an `item` icon has no inline text form, so `<icons:name>`
+for an `item`-type entry resolves to nothing wherever it's placed. `item`
+icons are only usable through a custom screen's `icon:` field instead (see
+Custom Screens below), which shows them as a small icon above the dialog's
+content.
+
+Anything invalid or missing — an unknown name, a bad sprite/material, etc. —
+is silently treated as "no icon", so a bad tag or a bad entry never breaks
+the surrounding text or the dialog itself.
+
+---
+
 ## Custom Screens
 
 AuthMeBia includes a mini-framework for defining fully custom dialog screens that
@@ -296,12 +341,30 @@ custom_screens:
 |-------|------|---------|-------------|
 | `id` | string | required | Unique ID used with `/bia screen <id>` |
 | `enabled` | boolean | `true` | Enable/disable without removing the entry |
-| `title` | string | `"Notice"` | Dialog title. Full MiniMessage. |
+| `title` | string | `"Notice"` | Dialog title. Full MiniMessage, can include `<icons:name>` (see Custom Icons below). |
 | `content` | string | `""` | Dialog body. Full MiniMessage + `\n`. |
 | `allow_close` | boolean | `true` | Whether ESC/click-outside closes the dialog |
 | `button_width` | int | `dialog.button_width` | Default width for buttons in this screen |
 | `trigger` | string | `command` | When the screen auto-shows (see below) |
 | `sound_on_show` | string | `""` | Sound played when the screen opens (in-game only) |
+| `icon` | string | none | Name of an `item`-type entry under `custom_icons:` in `config.yml`, shown as a small icon above the dialog's content. Only `item`-type icons are usable here — `sprite`/`player_head` icons go inline in `title`/`content` instead, via `<icons:name>`. |
+| `checkbox_label` | string | none | If set, shows a checkbox with this label (MiniMessage + `{player}`). Leave unset for no checkbox. |
+| `checkbox_action` | string | `show` | What ticking `checkbox_label` does when the player dismisses the screen — see below. Only takes effect for `postjoin`/`prejoin` triggers; `/bia screen <id>` always shows the screen regardless. |
+
+### `checkbox_action` values
+
+| Value | Behaviour |
+|-------|-----------|
+| `show` (default) | Purely cosmetic — the screen shows again next time it's triggered either way. |
+| `close` | Ticked = never show this screen to this player again (persisted, survives restarts). Left unticked = shows again next time, same as `show`. |
+
+`checkbox_action: close` only fires from a `close`, `command`, or `console`
+button — `open_url` and `copy` are client-only actions that never send the
+checkbox's value back to the server, so a checkbox on a screen with only
+those button types can never actually trigger it. Use `/bia screen reset
+<player> [id]` to clear a player's "closed forever" checkbox for a screen
+(omit `id` to reset all screens for that player).
+
 
 ### `trigger` values
 
@@ -357,11 +420,14 @@ the pre-spawn blocking phase.
 ```
 /bia screen <id>            Show screen to yourself (must be in-game)
 /bia screen <id> <player>  Show screen to another online player
+/bia screen reset <player>          Reset every screen's "closed forever" checkbox for a player
+/bia screen reset <player> <id>     Reset just one screen's "closed forever" checkbox for a player
 ```
 
 Tab completion is available for `<id>` (lists all configured screen IDs) and
 `<player>` (lists online players). The same tab completion applies to
 `/bia add <player>`, `/bia rm <player>`, and `/bia recover <player>`.
+`/bia screen reset` requires OP, same as `/bia screen`.
 
 ---
 
@@ -461,7 +527,7 @@ See the `dialog.min_protocol_version` comment in `config.yml` for details.
 
 AuthMeBia detects at startup whether it is running on Folia (checking for
 `io.papermc.paper.threadedregions.RegionizedServer`) and switches every
-scheduled task — dialog timeouts, wait delays, IP bans, welcome image
+scheduled task — dialog timeouts, post-login delays, IP bans, welcome image
 delivery — to Folia's region-aware `AsyncScheduler` / per-entity scheduler
 instead of the standard Bukkit scheduler. No configuration is needed; this is
 automatic. `/bia info` reports the detected platform (Paper, Folia, or plain

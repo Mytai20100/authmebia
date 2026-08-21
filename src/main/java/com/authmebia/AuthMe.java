@@ -10,7 +10,6 @@ import com.authmebia.dialog.recover.Recover;
 import com.authmebia.dialog.register.Register;
 import com.authmebia.dialog.rule.Rule;
 import com.authmebia.dialog.shared.AuthInput;
-import com.authmebia.dialog.wait.Wait;
 import com.authmebia.lang.Lang;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.listeners.version.Version;
@@ -93,6 +92,23 @@ public class AuthMe implements Listener {
     // why waiting doesn't work here.
     private volatile boolean cachedSessionsEnabled = false;
     private volatile long cachedSessionTimeoutMinutes = 0;
+
+    // AuthMe's "/authme reload" reloads AuthMe's own config in-process and
+    // does not fire any Bukkit event we can listen for, so
+    // refreshAuthMeConfigCache() being called only from "/authmebia
+    // reload" (see cmd/reload/Reload.java) meant the two plugins could
+    // silently disagree about settings.sessions.timeout after an admin
+    // reloaded only AuthMe: whichever value AuthMeBia had cached last kept
+    // being used until someone remembered to also run "/authmebia
+    // reload", so the dialog-skip window (isSessionEligibleByLastLogin)
+    // could end up shorter or longer than AuthMe's own session, kicking
+    // players back to login/register even though AuthMe still considered
+    // them within their session, or the reverse. Rather than depending on
+    // an event that doesn't exist, this tracks the config file's last-
+    // modified time and re-reads it lazily whenever it's out of date --
+    // cheap (a single stat(), no parsing) on the common case where nothing
+    // changed, so it's safe to check on every join.
+    private volatile long cachedConfigLastModified = -1L;
 
     final Map<UUID, String> pendingRegister = new ConcurrentHashMap<>();
     final Map<UUID, Boolean> pendingForceLogin = new ConcurrentHashMap<>();
@@ -224,6 +240,7 @@ public class AuthMe implements Listener {
             cachedAuthMeCaptchaEnabled = false;
             cachedPremiumEnabled = false;
             cachedSessionsEnabled = false;
+            cachedConfigLastModified = -1L;
             return;
         }
 
@@ -233,6 +250,7 @@ public class AuthMe implements Listener {
             cachedAuthMeCaptchaEnabled = false;
             cachedPremiumEnabled = false;
             cachedSessionsEnabled = false;
+            cachedConfigLastModified = -1L;
             return;
         }
 
@@ -256,11 +274,46 @@ public class AuthMe implements Listener {
 
             cachedAuthMeCaptchaEnabled = yaml.getBoolean("Security.captcha.useCaptcha", false);
             cachedPremiumEnabled = yaml.getBoolean("settings.enablePremium", false);
+
+            // Record the mtime we just read *as of this successful parse*
+            // so ensureAuthMeConfigFresh() below can tell whether a later
+            // "/authme reload" (which rewrites this file in place but
+            // fires no event we can listen for) has since changed it.
+            cachedConfigLastModified = file.lastModified();
         } catch (Exception e) {
             plugin.getLogger().warning("Could not read AuthMe config.yml: " + e.getMessage());
             cachedBlindEffectEnabled = false;
             cachedAuthMeCaptchaEnabled = false;
             cachedPremiumEnabled = false;
+        }
+    }
+
+    /**
+     * Cheap freshness check for the settings.sessions.* cache (and the
+     * other cachedXxx fields refreshed alongside it), called right before
+     * anything that depends on cachedSessionTimeoutMinutes /
+     * cachedSessionsEnabled. "/authme reload" rewrites AuthMe's config.yml
+     * in place and reloads AuthMe's in-process Settings from it, but does
+     * not disable/re-enable the plugin and fires no event AuthMeBia can
+     * observe -- so without this, AuthMeBia would keep using whatever
+     * timeout it last cached (from startup or the last "/authmebia
+     * reload") even after an admin changed and reloaded AuthMe's own
+     * timeout, making isSessionEligibleByLastLogin() disagree with
+     * AuthMe's own SessionService about how long a session lasts. A
+     * single File.lastModified() stat is cheap enough to call on every
+     * join; the (much more expensive) full YAML re-parse in
+     * refreshAuthMeConfigCache() only actually runs when the mtime has
+     * moved, i.e. only right after a real AuthMe config reload happened.
+     */
+    private void ensureAuthMeConfigFresh() {
+        org.bukkit.plugin.Plugin authme = plugin.getServer().getPluginManager().getPlugin("AuthMe");
+        if (authme == null) authme = plugin.getServer().getPluginManager().getPlugin("AuthMeReloaded");
+        if (authme == null) return;
+
+        File file = new File(authme.getDataFolder(), "config.yml");
+        long onDisk = file.exists() ? file.lastModified() : -1L;
+        if (onDisk != cachedConfigLastModified) {
+            refreshAuthMeConfigCache();
         }
     }
 
@@ -333,9 +386,6 @@ public class AuthMe implements Listener {
             }
             changePassword(name, newPass);
             plugin.recoverStore().clear(uuid);
-            if (cfg.authWaitEnabled() && cfg.authWaitPreJoin()) {
-                Wait.showWaitDialogBlocking(connection, cfg, cfg.authWaitSeconds());
-            }
             showPrejoinScreensBlocking(connection, name);
             pendingForceLogin.put(uuid, true);
             authed.set(true);
@@ -359,10 +409,6 @@ public class AuthMe implements Listener {
                 }
             }
 
-            if (cfg.authWaitEnabled() && cfg.authWaitPreJoin()) {
-                Wait.showWaitDialogBlocking(connection, cfg, cfg.authWaitSeconds());
-            }
-
             showPrejoinScreensBlocking(connection, name);
             pendingForceLogin.put(uuid, true);
             authed.set(true);
@@ -379,10 +425,12 @@ public class AuthMe implements Listener {
     }
 
     private void showPrejoinScreensBlocking(PlayerConfigurationConnection conn, String playerName) {
+        UUID uuid = conn.getProfile().getId();
         Cfg.withPlayerContext(playerName, () -> {
             for (CustomScreen screen : plugin.cfg().customScreens()) {
                 if (!screen.enabled()) continue;
                 if (screen.trigger() != com.authmebia.dialog.customscreen.CustomScreen.Trigger.PREJOIN) continue;
+                if (CustomScreen.isAutoDismissedFor(screen, uuid)) continue;
                 if (!conn.isConnected()) break;
                 CustomScreen.showCustomScreenBlocking(conn, screen, playerName);
             }
@@ -390,10 +438,12 @@ public class AuthMe implements Listener {
     }
 
     private void showPostJoinScreens(Player player) {
+        UUID uuid = player.getUniqueId();
         Cfg.withPlayerContext(player.getName(), () -> {
             for (CustomScreen screen : plugin.cfg().customScreens()) {
                 if (!screen.enabled()) continue;
                 if (screen.trigger() != com.authmebia.dialog.customscreen.CustomScreen.Trigger.POSTJOIN) continue;
+                if (CustomScreen.isAutoDismissedFor(screen, uuid)) continue;
                 CustomScreen.showCustomScreen(player, screen, player.getName());
                 return;
             }
@@ -669,18 +719,20 @@ public class AuthMe implements Listener {
         });
     }
 
-    private void afterWait(Player player, Runnable forceOp) {
-        Cfg cfg = plugin.cfg();
-        long ticks;
-        if (cfg.authWaitEnabled() && !cfg.authWaitPreJoin()) {
-            ticks = Math.max(20L, cfg.authWaitSeconds() * 20L);
-            runOnPlayer(player, () -> Wait.showWaitDialog(player, cfg));
-        } else {
-            ticks = 5L;
-        }
-        runLater(player, forceOp, ticks);
-    }
-
+    /**
+     * Runs forceOp (forceRegister/forceLogin) after the player has
+     * (post-join, in-game) submitted the register/login dialog.
+     *
+     * forceOp fires on the next tick and, exactly like login already
+     * does, lets doForceRegister/doForceLogin's own awaitLogin/awaitRegister
+     * (backed by the real LoginEvent/RegisterEvent/FailedLoginEvent
+     * listeners below) be the thing that's actually waited on -- a real
+     * response instead of a guessed delay. The register/login dialogs
+     * themselves are shown with DialogAfterAction.WAIT_FOR_RESPONSE, so
+     * the client already shows its own waiting state until the next
+     * dialog (or a close) arrives -- no separate wait dialog is needed
+     * here.
+     */
     private void runLater(Player player, Runnable task, long ticks) {
         long delay = Math.max(1L, ticks);
         if (plugin.isFolia()) {
@@ -729,7 +781,7 @@ public class AuthMe implements Listener {
         if (!registerPlayerNoValidation(player.getName(), code)) {
             return;
         }
-        afterWait(player, () -> doForceLogin(player, true));
+        runLater(player, () -> doForceLogin(player, true), 1L);
     }
 
     public boolean isPremiumSkip(UUID connectingUuid, String name) {
@@ -893,6 +945,11 @@ public class AuthMe implements Listener {
      *           (see IpGuard.resolveIp), or null if unavailable
      */
     public boolean isSessionEligibleByLastLogin(String name, String ip) {
+        // Pick up any settings.sessions.* change made by a bare "/authme
+        // reload" before comparing against it -- see
+        // ensureAuthMeConfigFresh()'s doc comment for why this can't just
+        // rely on refreshAuthMeConfigCache() having already been called.
+        ensureAuthMeConfigFresh();
         if (!cachedSessionsEnabled || name == null || ip == null) return false;
         if (getLastIp == null || getLastLoginTime == null) return false;
         if (dataSource == null || dsHasSession == null) return false;
@@ -989,7 +1046,7 @@ public class AuthMe implements Listener {
     }
 
     public void registerAndLogin(Player player, String password) {
-        afterWait(player, () -> doForceRegister(player, password));
+        runLater(player, () -> doForceRegister(player, password), 1L);
     }
 
     private void doForceRegister(Player player, String password) {

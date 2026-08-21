@@ -76,13 +76,26 @@ public final class Dialoglib {
      */
     public static DialogBase buildBase(Component title, Component content, boolean escape,
                                         List<DialogInput> inputs, DialogAfterAction afterAction) {
+        return buildBase(title, content, escape, inputs, afterAction, null);
+    }
+
+    /**
+     * Same as the 5-arg overload, but lets the caller prepend an extra
+     * DialogBody entry (e.g. an ItemDialogBody built from a custom_icons
+     * "item" entry, see IconSpec) before the plain-text content body.
+     * Passing null behaves exactly like the 5-arg overload.
+     */
+    public static DialogBase buildBase(Component title, Component content, boolean escape,
+                                        List<DialogInput> inputs, DialogAfterAction afterAction,
+                                        DialogBody leadingBody) {
         DialogBase.Builder builder = DialogBase.builder(title)
                 .canCloseWithEscape(escape)
                 .afterAction(afterAction == null ? DialogAfterAction.CLOSE : afterAction)
                 .inputs(inputs);
-        if (content != null) {
+        if (content != null || leadingBody != null) {
             List<DialogBody> bodies = new ArrayList<>();
-            bodies.add(DialogBody.plainMessage(content));
+            if (leadingBody != null) bodies.add(leadingBody);
+            if (content != null) bodies.add(DialogBody.plainMessage(content));
             builder.body(bodies);
         }
         return builder.build();
@@ -271,5 +284,19 @@ public final class Dialoglib {
             if (t instanceof RuntimeException re) throw re;
             if (t instanceof Error err) throw err;
         } catch (IllegalAccessException ignored) {}
+    }
+
+    /**
+     * Public entry point for invokeCallback(), for callers outside this
+     * package that need to compose/wrap another DialogActionCallback
+     * (e.g. CustomScreen's dismissAwareCallback, which needs to run an
+     * inner button callback after first handling this screen's checkbox).
+     * Kept as a thin public wrapper around the private, reflection-based
+     * invokeCallback() rather than making that method itself public, so
+     * the SAM-invocation workaround stays an internal implementation
+     * detail of this class.
+     */
+    public static void runCallback(DialogActionCallback cb, DialogResponseView r, Audience a) {
+        invokeCallback(cb, r, a);
     }
 }

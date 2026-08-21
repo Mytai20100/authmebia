@@ -8,7 +8,6 @@ import com.authmebia.dialog.emailverify.EmailVerify;
 import com.authmebia.dialog.login.Login;
 import com.authmebia.dialog.recover.Recover;
 import com.authmebia.dialog.register.Register;
-import com.authmebia.dialog.wait.Wait;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
@@ -97,18 +96,6 @@ public final class Debug {
                 };
                 runOnPlayer.accept(p, show);
             }
-            case "wait" -> {
-                if (!(sender instanceof Player p)) {
-                    sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
-                    return;
-                }
-                if (!value) {
-                    sender.sendMessage(Component.text("[debug] Use 'true' to show the wait dialog.", NamedTextColor.RED));
-                    return;
-                }
-                sender.sendMessage(Component.text("[debug] Showing wait dialog...", NamedTextColor.YELLOW));
-                runOnPlayer.accept(p, () -> Wait.showWaitDialog(p, cfg));
-            }
             case "recover" -> {
                 if (!(sender instanceof Player p)) {
                     sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
@@ -142,7 +129,7 @@ public final class Debug {
                     NamedTextColor.YELLOW));
             }
             default -> sender.sendMessage(Component.text(
-                "[debug] Unknown feature '" + feature + "'. Valid features: captcha, email, register, login, wait, recover, rule",
+                "[debug] Unknown feature '" + feature + "'. Valid features: captcha, email, register, login, recover, rule",
                 NamedTextColor.RED));
         }
     }

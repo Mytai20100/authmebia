@@ -4,8 +4,11 @@ import com.authmebia.AuthMeBia;
 import com.authmebia.dialog.Mode;
 import com.authmebia.dialog.customscreen.CustomScreen;
 import com.authmebia.dialog.shared.LinkButton;
+import com.authmebia.dialog.util.IconSpec;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.Tag;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.util.ArrayList;
@@ -17,6 +20,27 @@ public class Cfg {
     private final AuthMeBia plugin;
     FileConfiguration config;
     private static final MiniMessage MM = MiniMessage.miniMessage();
+
+    /**
+     * MiniMessage tag "<icons:name>" -- lets any title/content/button
+     * label string place a "custom_icons:" entry (see IconSpec) at any
+     * position in the text, instead of it always being prepended to the
+     * title. Only SPRITE and PLAYER_HEAD icons can be inlined this way
+     * (an ITEM icon has no inline text representation, see
+     * IconSpec.toInlineComponent); an unknown name, a missing entry, or an
+     * ITEM-type entry all just resolve to nothing, so a bad tag never
+     * breaks the surrounding text. The resolved player name (for
+     * player_head icons using "{player}") comes from the same
+     * PLAYER_CONTEXT thread-local used for {player}/PlaceholderAPI
+     * substitution elsewhere in this class.
+     */
+    private final TagResolver iconsTagResolver = TagResolver.resolver("icons", (args, ctx) -> {
+        String name = args.popOr("icons tag requires a name, e.g. <icons:trial_key>").value();
+        IconSpec spec = icon(name);
+        if (spec == null) return Tag.selfClosingInserting(Component.empty());
+        Component inline = spec.toInlineComponent(PLAYER_CONTEXT.get());
+        return Tag.selfClosingInserting(inline == null ? Component.empty() : inline);
+    });
 
     /**
      * Request-scoped player context for PlaceholderAPI substitution.
@@ -151,6 +175,7 @@ public class Cfg {
     public Component loginContent(String playerName) {
         return parse(replacePlayer(config.getString("dialog.login.content", ""), playerName));
     }
+
 
     public Component logoutButton() {
         return parse(config.getString("dialog.logout_button", "<red>Logout</red>"));
@@ -314,29 +339,6 @@ public class Cfg {
 
     public int sliderButtonWidth() {
         return clampWidth(config.getInt("auth_mode.slider.button_width", 100));
-    }
-
-    public boolean authWaitEnabled() {
-        return config.getBoolean("auth_wait.wait", true);
-    }
-
-    public boolean authWaitPreJoin() {
-        return config.getBoolean("auth_wait.prejoin", true);
-    }
-
-    public int authWaitSeconds() {
-        int seconds = config.getInt("auth_wait.time", 3);
-        if (seconds < 1) return 1;
-        if (seconds > 10) return 10;
-        return seconds;
-    }
-
-    public Component authWaitTitle() {
-        return parse(config.getString("auth_wait.title", "<gold>Please wait</gold>"));
-    }
-
-    public Component authWaitContent() {
-        return parse(config.getString("auth_wait.content", "<gray>Logging you in, please wait...</gray>"));
     }
 
     public boolean ruleEnabled() {
@@ -747,7 +749,35 @@ public class Cfg {
                 buttons.add(new CustomScreen.Button(label, action, value, width, btnSound));
             }
         }
-        return new CustomScreen(id, enabled, title, content, allowClose, defaultWidth, buttons, trigger, soundOnShow);
+        String iconName = readString(map, "icon", null);
+        if (iconName != null && iconName.isBlank()) iconName = null;
+
+        String rawCheckboxLabel = readString(map, "checkbox_label", null);
+        Component checkboxLabel = null;
+        if (rawCheckboxLabel != null && !rawCheckboxLabel.isBlank()) {
+            checkboxLabel = parse(replacePlayer(rawCheckboxLabel, contextPlayerName));
+        }
+        CustomScreen.CheckboxAction checkboxAction =
+                CustomScreen.CheckboxAction.parse(readString(map, "checkbox_action", "show"));
+
+        return new CustomScreen(id, enabled, title, content, allowClose, defaultWidth, buttons, trigger, soundOnShow,
+                iconName, checkboxLabel, checkboxAction);
+    }
+
+    // --- Custom icons ---
+
+    /**
+     * Looks up a named entry under "custom_icons:" in config.yml and parses
+     * it into an IconSpec. Returns null if the name is null/blank, the
+     * section doesn't exist, or the entry fails to parse -- callers should
+     * treat null exactly like "no icon configured" (see IconSpec javadoc).
+     */
+    public IconSpec icon(String name) {
+        if (name == null || name.isBlank()) return null;
+        org.bukkit.configuration.ConfigurationSection section =
+                config.getConfigurationSection("custom_icons." + name);
+        if (section == null) return null;
+        return IconSpec.parse(section.getValues(false));
     }
 
     // --- Toast notifications ---
@@ -802,10 +832,10 @@ public class Cfg {
         String withPapi = applyPlaceholderApiFromContext(input);
         String normalized = withPapi.replace("\\n", "\n");
         String[] lines = normalized.split("\n", -1);
-        if (lines.length == 1) return MM.deserialize(lines[0]);
-        Component result = MM.deserialize(lines[0]);
+        if (lines.length == 1) return MM.deserialize(lines[0], iconsTagResolver);
+        Component result = MM.deserialize(lines[0], iconsTagResolver);
         for (int i = 1; i < lines.length; i++) {
-            result = result.append(Component.newline()).append(MM.deserialize(lines[i]));
+            result = result.append(Component.newline()).append(MM.deserialize(lines[i], iconsTagResolver));
         }
         return result;
     }

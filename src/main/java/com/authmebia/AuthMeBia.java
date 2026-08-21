@@ -7,6 +7,7 @@ import com.authmebia.listeners.bialist.BiaList;
 import com.authmebia.listeners.captcha.Captcha;
 import com.authmebia.listeners.ipguard.IpGuard;
 import com.authmebia.listeners.recoverstore.RecoverStore;
+import com.authmebia.listeners.screendismiss.ScreenDismissStore;
 import com.authmebia.listeners.version.Version;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
@@ -26,6 +27,7 @@ public final class AuthMeBia extends JavaPlugin {
     private Lang lang;
     private BiaList biaList;
     private RecoverStore recoverStore;
+    private ScreenDismissStore screenDismissStore;
     private boolean foliaServer;
     private OkHttpClient httpClient;
     private AuthMe authMeListener;
@@ -49,6 +51,7 @@ public final class AuthMeBia extends JavaPlugin {
         ipGuard = new IpGuard();
         biaList = new BiaList(this);
         recoverStore = new RecoverStore(this);
+        screenDismissStore = new ScreenDismissStore(this);
 
         httpClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
@@ -236,6 +239,10 @@ public final class AuthMeBia extends JavaPlugin {
 
     public RecoverStore recoverStore() {
         return recoverStore;
+    }
+
+    public ScreenDismissStore screenDismissStore() {
+        return screenDismissStore;
     }
 
     public OkHttpClient httpClient() {

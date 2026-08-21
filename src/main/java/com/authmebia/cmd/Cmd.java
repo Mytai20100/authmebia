@@ -102,7 +102,7 @@ public class Cmd {
                     .requires(source -> source.getSender().isOp())
                     .then(Commands.argument("feature", StringArgumentType.word())
                         .suggests((ctx, builder) -> {
-                            for (String f : new String[]{"captcha", "email", "register", "login", "wait", "recover", "rule"})
+                            for (String f : new String[]{"captcha", "email", "register", "login", "recover", "rule"})
                                 builder.suggest(f);
                             return builder.buildFuture();
                         })
@@ -161,6 +161,31 @@ public class Cmd {
                                     }))))))
                 .then(Commands.literal("screen")
                     .requires(source -> source.getSender().isOp())
+                    .then(Commands.literal("reset")
+                        .then(Commands.argument("player", StringArgumentType.word())
+                            .suggests((ctx, builder) -> {
+                                ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                    .forEach(p -> builder.suggest(p.getName()));
+                                return builder.buildFuture();
+                            })
+                            .executes(ctx -> {
+                                String playerName = StringArgumentType.getString(ctx, "player");
+                                com.authmebia.cmd.screen.Screen.executeReset(
+                                    ctx.getSource().getSender(), playerName, null, plugin, resolveUuid(playerName));
+                                return Command.SINGLE_SUCCESS;
+                            })
+                            .then(Commands.argument("id", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    plugin.cfg().customScreens().forEach(s -> builder.suggest(s.id()));
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    String playerName = StringArgumentType.getString(ctx, "player");
+                                    com.authmebia.cmd.screen.Screen.executeReset(
+                                        ctx.getSource().getSender(), playerName,
+                                        StringArgumentType.getString(ctx, "id"), plugin, resolveUuid(playerName));
+                                    return Command.SINGLE_SUCCESS;
+                                }))))
                     .then(Commands.argument("id", StringArgumentType.word())
                         .suggests((ctx, builder) -> {
                             plugin.cfg().customScreens().forEach(s -> builder.suggest(s.id()));

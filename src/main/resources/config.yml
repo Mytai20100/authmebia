@@ -190,8 +190,10 @@ dialog:
     auth_mode_override: ""
 
   register:
-    # Title shown at the top of the registration dialog.
-    title: "<#4287f5>Create Account</#4287f5>"
+    # Title shown at the top of the registration dialog. Place
+    # <icons:name> anywhere in this string to show a custom_icons entry
+    # inline (see "custom_icons:" above) — position is entirely up to you.
+    title: "<icons:trial_key> <#4287f5>Create Account</#4287f5>"
     # Body text shown above the input fields. Leave empty for no body text.
     content: "<gray>Welcome, {player}! Please create a password to register.</gray>"
     # Label for the password input field.
@@ -202,8 +204,10 @@ dialog:
     submit_sound: ""
 
   login:
-    # Title shown at the top of the login dialog.
-    title: "<gold>Login</gold>"
+    # Title shown at the top of the login dialog. Place <icons:name>
+    # anywhere in this string to show a custom_icons entry inline (see
+    # "custom_icons:" above) — position is entirely up to you.
+    title: "<icons:trial_key> <gold>Login</gold>"
     # Body text shown above the password field.
     content: "<gold>Welcome back, {player}!</gold>"
     # Label for the password input field.
@@ -332,43 +336,6 @@ auth_mode:
     button_width: 100
     # Sound played when clicking any slider button (+/-, confirm).
     button_sound: ""
-
-# Grace period shown after submitting a register/login so the server has time
-# to finish loading the account before AuthMeBia force-logs the player in.
-# Without this small wait, a force-login can fire before AuthMe's datasource
-# has the freshly-saved account ready, which is what causes "registered but not
-# logged in" right after registering (especially with pin/slider).
-auth_wait:
-  # If true, show the wait dialog (below) during the grace period. If false,
-  # a small built-in safety delay is still applied, just without a dialog.
-  wait: true
-
-  # Controls when the wait dialog is shown relative to the player joining.
-  #
-  # true  (default) - Show the wait dialog BEFORE the player fully spawns
-  #                   (pre-spawn / configuration phase). This happens inside
-  #                   the same blocking phase as the register/login dialogs,
-  #                   so the player sees: [login/register dialog] → [wait dialog]
-  #                   → spawns in-game already authenticated. The post-spawn
-  #                   (postjoin) wait path is suppressed when this is true.
-  #
-  # false           - Show the wait dialog AFTER the player has spawned in-game
-  #                   (post-spawn / postjoin path). The pre-spawn wait is skipped.
-  #                   Use this if dialog.menu is false (post-spawn login mode).
-  #
-  # Rule of thumb: set this to match dialog.menu.
-  #   dialog.menu: true  → auth_wait.prejoin: true   (both pre-spawn)
-  #   dialog.menu: false → auth_wait.prejoin: false  (both post-spawn)
-  prejoin: true
-
-  # Length of the grace period in seconds. Valid range: 1-10.
-  time: 3
-
-  # Title of the wait dialog. Supports MiniMessage.
-  title: "<gold>Please wait</gold>"
-
-  # Body text of the wait dialog. Supports MiniMessage and \n.
-  content: "<gray>Logging you in, please wait...</gray>"
 
 rule:
   # If true, players must accept the server rules (after registering) before
@@ -641,24 +608,110 @@ totp_2fa:
   # Error shown inline when the code is wrong.
   wrong_code_error: "Invalid code"
 
+# Named icons that can be placed inline inside ANY MiniMessage string in
+# this config (titles, content, button labels, custom screen text, etc.)
+# using the tag <icons:name> — wherever you put the tag in the string is
+# exactly where the icon appears, e.g.:
+#   title: "<icons:trial_key> <gold>Login</gold>"
+#   title: "<gold>Login</gold> <icons:trial_key>"
+#   content: "Welcome!\n<icons:trial_key> Read the rules below."
+#
+# Each entry below is keyed by its own name (the part after "icons:" in
+# the tag) and supports one of three types:
+#
+#   type: sprite       - an icon from a texture atlas (the same kind of
+#                         icon vanilla uses for items/effects in its own
+#                         UI). Fields:
+#                           atlas  - atlas namespace/path (default "items")
+#                           sprite - sprite path, e.g. "item/trial_key"
+#   type: player_head  - a player's head. Fields:
+#                           player - player name, or "{player}" for the
+#                                    viewing player (default "{player}")
+#   type: item         - a full item icon (supports custom model data,
+#                         enchant glow, etc. via the item itself; this
+#                         section only controls the icon's own display).
+#                         Fields:
+#                           material          - a Bukkit Material name
+#                           show_decorations  - show durability/count/etc.
+#                                               overlays (default true)
+#                           show_tooltip      - show the item tooltip on
+#                                               hover (default true)
+#                           width, height     - icon size in pixels
+#                                               (default 16x16)
+#
+# IMPORTANT: only sprite and player_head icons can go inline via
+# <icons:name> — an item icon has no inline text form, so <icons:name>
+# for an "item"-type entry resolves to nothing wherever it's placed. Item
+# icons are only usable via a custom_screens "icon:" field (see below),
+# which shows them as a small icon above the dialog's content instead.
+#
+# Anything invalid or missing here — an unknown name, bad sprite/material,
+# etc. — is silently treated as "no icon", so a bad tag or a bad entry
+# never breaks the surrounding text or the dialog itself.
+custom_icons:
+  trial_key:
+    type: sprite
+    atlas: items
+    sprite: item/trial_key
+  # bedrock:
+  #   type: sprite
+  #   atlas: items
+  #   sprite: item/bedrock
+  # my_head:
+  #   type: player_head
+  #   player: "{player}"
+  # red_bed:
+  #   type: item
+  #   material: RED_BED
+  #   show_decorations: false
+  #   show_tooltip: false
+  #   width: 16
+  #   height: 16
+
 # Custom dialog screens — a mini-framework for showing fully custom dialogs.
 #
 # Show a screen manually: /bia screen <id> [player]
+# Reset a player's "closed forever" checkbox for a screen:
+#   /bia screen reset <player> [id]   (omit id to reset all screens for that player)
 #
 # Each screen supports:
-#   id           - unique identifier used with /bia screen <id>
-#   enabled      - true/false, disables the screen without removing it (default: true)
-#   title        - dialog title, supports full MiniMessage
-#   content      - dialog body, supports MiniMessage and \n
-#   allow_close  - whether the player can dismiss with ESC (default: true)
-#   button_width - default button width in pixels for this screen (default: dialog.button_width)
-#   trigger      - when this screen is automatically shown:
-#                    command  (default) - only via /bia screen
-#                    postjoin           - shown after the player authenticates and spawns in-game
-#                    prejoin            - shown during the pre-spawn phase (blocking), after auth
-#   sound_on_show - Minecraft sound played when the screen opens (in-game only).
-#                   Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
-#                   Example: "minecraft:ui.button.click 1.0 1.0"
+#   id              - unique identifier used with /bia screen <id>
+#   enabled         - true/false, disables the screen without removing it (default: true)
+#   title           - dialog title, supports full MiniMessage
+#   content         - dialog body, supports MiniMessage and \n
+#   allow_close     - whether the player can dismiss with ESC (default: true)
+#   button_width    - default button width in pixels for this screen (default: dialog.button_width)
+#   trigger         - when this screen is automatically shown:
+#                       command  (default) - only via /bia screen
+#                       postjoin           - shown after the player authenticates and spawns in-game
+#                       prejoin            - shown during the pre-spawn phase (blocking), after auth
+#   sound_on_show   - Minecraft sound played when the screen opens (in-game only).
+#                     Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
+#                     Example: "minecraft:ui.button.click 1.0 1.0"
+#   icon            - optional, name of an "item"-type entry under
+#                     "custom_icons:" above, shown as a small icon above
+#                     this screen's content. Only for "item"-type entries —
+#                     sprite/player_head icons go inline in the title/
+#                     content text instead, via the <icons:name> tag (see
+#                     "custom_icons:" above).
+#   checkbox_label  - optional. If set, a checkbox with this label is shown
+#                     in the dialog (supports MiniMessage and {player}).
+#                     Whether ticking it does anything depends on
+#                     checkbox_action below. Leave unset for no checkbox.
+#   checkbox_action - what ticking checkbox_label does when the player
+#                     dismisses the screen, for postjoin/prejoin triggers only
+#                     ("/bia screen <id>" always shows the screen regardless):
+#                       show  (default) - purely cosmetic; the screen shows
+#                               again next time it's triggered either way
+#                       close           - ticked = never show this screen to
+#                               this player again (persisted, survives
+#                               restarts). Left unticked = shows again next
+#                               time, same as "show".
+#                     Only takes effect on a "close", "command", or
+#                     "console" button — "open_url" and "copy" buttons never
+#                     send the checkbox's value back to the server (a Paper
+#                     client-only action), so a checkbox on a screen with
+#                     only those button types can never actually fire.
 #
 # Each button supports:
 #   label   - button text, full MiniMessage + {player}
@@ -672,12 +725,14 @@ totp_2fa:
 custom_screens:
   - id: example
     enabled: true
-    title: "<gold>Server Notice</gold>"
+    title: "<icons:trial_key> <gold>Server Notice</gold>"
     content: "<gray>Welcome to the server, <yellow>{player}</yellow>!\nHave fun playing.</gray>"
     allow_close: true
     button_width: 200
-    trigger: command
+    trigger: postjoin
     sound_on_show: ""
+    checkbox_label: "<gray>Don't show this again</gray>"
+    checkbox_action: close
     buttons:
       - label: "<green>OK</green>"
         action: close
@@ -687,19 +742,19 @@ custom_screens:
         value: "https://discord.gg/abc"
         width: 200
 
-  # Example: auto-show after authentication (postjoin trigger)
-  # - id: welcome_notice
+  # Example: only shown via /bia screen (command trigger)
+  # - id: rules
   #   enabled: false
-  #   title: "<gradient:gold:yellow>Welcome!</gradient>"
-  #   content: "<gray>Hello, <white>{player}</white>!\nEnjoy your stay.</gray>"
+  #   title: "<gradient:gold:yellow>Server Rules</gradient>"
+  #   content: "<gray>Hello, <white>{player}</white>!\nPlease read the rules.</gray>"
   #   allow_close: true
-  #   trigger: postjoin
+  #   trigger: command
   #   sound_on_show: "minecraft:entity.player.levelup 0.5 1.2"
   #   buttons:
-  #     - label: "<green>Play!</green>"
+  #     - label: "<green>Understood</green>"
   #       action: close
   #       sound: "minecraft:ui.button.click"
-  #     - label: "<aqua>Rules</aqua>"
+  #     - label: "<aqua>Full Rules</aqua>"
   #       action: command
   #       value: "/rules"
 

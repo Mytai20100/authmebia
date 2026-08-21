@@ -74,13 +74,6 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 </details>
 
 <details>
-<summary>Wait</summary>
-
-![Wait dialog](img/screen_wait.png)
-
-</details>
-
-<details>
 <summary>Login Timeout</summary>
 
 ![Login timeout dialog](img/screen_timeoutlogin.png)
@@ -143,11 +136,12 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 
 **Admin tools**
 - Bypass list: players added with `/bia add` skip all dialogs and fall back to AuthMe's own commands
-- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command
+- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command. Screens can include an optional agreement checkbox (`checkbox_label`/`checkbox_action`) that permanently suppresses the screen for a player once ticked and dismissed; reset it with `/bia screen reset <player> [id]`
 - Debug commands: preview individual dialogs in-game without going through the full login flow
 - Startup check that warns in the console if AuthMe's own built-in dialog (`settings.registration.dialog.preJoin/postJoin.enable`) is also enabled, to prevent two dialogs from appearing at once
 
 **Extras**
+- **Custom inline icons** (`custom_icons` + `<icons:name>`): define named icons (atlas sprites, player heads, or full item icons) once in config.yml, then drop `<icons:name>` anywhere inside any dialog title, content, or button label to show it inline. Item-type icons can also be shown above a custom screen's content via that screen's `icon:` field
 - PlaceholderAPI support: any config.yml or lang text field can use `%placeholder%` expansions from installed PlaceholderAPI extensions (e.g. LuckPerms prefixes, Vault ranks), on top of the plugin's own `{player}` substitution and MiniMessage formatting. Only active while rendering text for a specific player, and never throws or blocks if PlaceholderAPI is not installed
 - Link buttons inside dialogs (open URL, copy to clipboard)
 - Per-button click sounds: nearly every dialog button (submit, logout, agree, verify, resend, forgot password, custom screen buttons, etc.) can play its own Minecraft sound on click
@@ -168,10 +162,11 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 | `/bia rm <player>` | `authmebia.bypass` | Remove player from bypass list |
 | `/bia recover <player>` | `bia.admin.recover` | Force password reset on next login |
 | `/bia screen <id> [player]` | OP | Show a custom screen to a player |
+| `/bia screen reset <player> [id]` | OP | Reset a player's "closed forever" checkbox for a custom screen (omit `id` to reset all screens) |
 | `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game |
 | `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state |
 
-Debug features: `captcha`, `email`, `register`, `login`, `wait`, `recover`, `rule`.
+Debug features: `captcha`, `email`, `register`, `login`, `recover`, `rule`.
 Use `show` with `captcha` or `email` to preview those dialogs directly without going through the login flow.
 
 ---
@@ -270,14 +265,14 @@ dialog:
   input_width: 200
 
   register:
-    title: "<#4287f5>Create Account</#4287f5>"
+    title: "<icons:trial_key> <#4287f5>Create Account</#4287f5>"
     content: ""
     password_label: "Password"
     confirm_password_label: "Confirm Password"
     submit_sound: ""
 
   login:
-    title: "<gold>Login</gold>"
+    title: "<icons:trial_key> <gold>Login</gold>"
     content: "<gold>Welcome back, {player}!</gold>"
     password_label: "Password"
     submit_sound: ""
@@ -322,7 +317,7 @@ auth_mode:
     length: 4
     title: "<gold>Enter your PIN</gold>"
     confirm_button: "<green>Confirm</green>"
-    delete_button: "<red>Delete</red>"
+    delete_button: "<red>⌫ Delete</red>"
     button_width: 100
     button_sound: ""
 
@@ -332,13 +327,6 @@ auth_mode:
     confirm_button: "<green>Confirm</green>"
     button_width: 100
     button_sound: ""
-
-auth_wait:
-  wait: true
-  prejoin: true
-  time: 3
-  title: "<gold>Please wait</gold>"
-  content: "<gray>Logging you in, please wait...</gray>"
 
 rule:
   enabled: false
@@ -442,17 +430,21 @@ totp_2fa:
   wrong_code_error: "Invalid code"
 
 # Custom dialog screens. Show with: /bia screen <id> [player]
-# Button actions: close, open_url, copy
+# Reset a player's "closed forever" checkbox: /bia screen reset <player> [id]
+# Button actions: close, open_url, copy, command, console
 custom_screens:
   - id: example
     enabled: true
-    title: "<gold>Server Notice</gold>"
+    title: "<icons:trial_key> <gold>Server Notice</gold>"
     content: "<gray>Welcome to the server, {player}!\nHave fun playing.</gray>"
     allow_close: true
     button_width: 200
     # command (default), postjoin, or prejoin -- see doc/README.md
     trigger: command
     sound_on_show: ""
+    # Optional agreement checkbox -- see doc/README.md for checkbox_action
+    checkbox_label: "<gray>Don't show this again</gray>"
+    checkbox_action: close
     buttons:
       - label: "<green>OK</green>"
         action: close
@@ -466,6 +458,17 @@ ip_ban:
   enabled: false
   threshold: 10
   ban_durations_seconds: [600, 1800, 3600, 86400]
+
+# Named icons usable inline anywhere via <icons:name> (titles, content,
+# button labels, custom screen text, etc.) -- see doc/README.md for the
+# full sprite/player_head/item field reference.
+custom_icons:
+  trial_key:
+    type: sprite
+    atlas: items
+    sprite: item/trial_key
+
+config_version: 2
 ```
 
 </details>

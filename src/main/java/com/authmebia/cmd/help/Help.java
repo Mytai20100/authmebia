@@ -16,7 +16,7 @@ public final class Help {
         sb.append(line("/bia recover <player>", "Force a password reset on the player's next login"));
         if (op) {
             sb.append(line("/bia debug <feature> <true|false|show>", "Test a feature (OP only)"));
-            sb.append(note("  Features: captcha, email, register, login, wait, recover, rule"));
+            sb.append(note("  Features: captcha, email, register, login, recover, rule"));
             sb.append(note("  Use 'show' with captcha/email to preview the dialog GUI"));
             sb.append(line("/bia notifier <toast> <player> show [seconds]", "Preview a custom toast notification (OP only)"));
             sb.append(line("/bia screen <id> [player]", "Show a custom screen to a player (OP only)"));
