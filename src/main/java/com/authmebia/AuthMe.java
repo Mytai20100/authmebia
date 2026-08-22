@@ -38,7 +38,6 @@ import java.util.concurrent.TimeUnit;
 public class AuthMe implements Listener {
 
     private static final long AUTH_RESULT_TIMEOUT_MS = 5000L;
-
     private final AuthMeBia plugin;
     private Object api;
     private Method isRegistered;
@@ -49,7 +48,6 @@ public class AuthMe implements Listener {
     private Method changePassword;
     private Method isAuthenticated;
     private Method registerPlayer;
-
     private Object dataSource;
     private Method dsGetAuth;
     private Method dsHasSession;
@@ -57,65 +55,26 @@ public class AuthMe implements Listener {
     private Method authGetPremiumUuid;
     private Method authGetEmail;
     private volatile boolean cachedPremiumEnabled = false;
-
-    // AuthMe's own PlayerCache tracks which player names are currently
-    // authenticated in memory. Bound by name so it can be queried without a
-    // full Player object. Only meaningful once AuthMe's own PlayerJoinEvent
-    // handling has run for this join -- it is NOT populated yet during the
-    // configuration phase (AsyncPlayerConnectionConfigureEvent), since
-    // AuthMe itself does not evaluate its session feature until later, in
-    // its own PlayerJoinEvent listener. See isSessionAuthenticated() and
-    // isSessionEligibleByLastLogin() for how each is actually used.
     private Object playerCache;
     private Method pcIsAuthenticatedByName;
-
     private Object emailService;
     private Method emailHasAllInfo;
     private Method emailSendVerification;
     private Method dsUpdateEmail;
     private Method authSetEmail;
     public final Map<UUID, String> pendingEmail = new ConcurrentHashMap<>();
-
     private Object totpAuthenticator;
     private Method totpCheckCode;
     private Method authGetTotpKey;
-
     private volatile boolean cachedBlindEffectEnabled = false;
     private volatile boolean cachedAuthMeCaptchaEnabled = false;
     private volatile Boolean debugCaptchaOverride = null;
     private volatile Boolean debugEmailOverride = null;
-
-    // AuthMe's own settings.sessions.* values, read directly from AuthMe's
-    // config.yml (same approach as cachedBlindEffectEnabled above). Used by
-    // isSessionEligibleByLastLogin() to replicate AuthMe's own session
-    // check rather than waiting on AuthMe to run it -- see that method for
-    // why waiting doesn't work here.
     private volatile boolean cachedSessionsEnabled = false;
     private volatile long cachedSessionTimeoutMinutes = 0;
-
-    // AuthMe's "/authme reload" reloads AuthMe's own config in-process and
-    // does not fire any Bukkit event we can listen for, so
-    // refreshAuthMeConfigCache() being called only from "/authmebia
-    // reload" (see cmd/reload/Reload.java) meant the two plugins could
-    // silently disagree about settings.sessions.timeout after an admin
-    // reloaded only AuthMe: whichever value AuthMeBia had cached last kept
-    // being used until someone remembered to also run "/authmebia
-    // reload", so the dialog-skip window (isSessionEligibleByLastLogin)
-    // could end up shorter or longer than AuthMe's own session, kicking
-    // players back to login/register even though AuthMe still considered
-    // them within their session, or the reverse. Rather than depending on
-    // an event that doesn't exist, this tracks the config file's last-
-    // modified time and re-reads it lazily whenever it's out of date --
-    // cheap (a single stat(), no parsing) on the common case where nothing
-    // changed, so it's safe to check on every join.
     private volatile long cachedConfigLastModified = -1L;
-
     final Map<UUID, String> pendingRegister = new ConcurrentHashMap<>();
     final Map<UUID, Boolean> pendingForceLogin = new ConcurrentHashMap<>();
-    // Players who bypassed the dialog via auto.premium_autologin or
-    // auto.bedrock_autologin (see resolveAutoLoginJavaUuid) and still need
-    // forceRegister+forceLogin run for them once they join, plus the
-    // mandatory password-reset dialog on their first such join.
     final Map<UUID, Boolean> pendingAutoLogin = new ConcurrentHashMap<>();
     private final Map<UUID, CompletableFuture<Boolean>> pendingLoginFutures = new ConcurrentHashMap<>();
     private final Map<UUID, CompletableFuture<Boolean>> pendingRegisterFutures = new ConcurrentHashMap<>();
@@ -141,12 +100,6 @@ public class AuthMe implements Listener {
             changePassword = cls.getMethod("changePassword", String.class, String.class);
             isAuthenticated = cls.getMethod("isAuthenticated", Player.class);
             registerPlayer = cls.getMethod("registerPlayer", String.class, String.class);
-            // getLastIp/getLastLoginTime read AuthMe's persisted PlayerAuth
-            // record directly (via AuthMe's own PlayerCache-then-DataSource
-            // lookup internally) -- this is data AuthMe already has *before*
-            // this join even starts, unlike PlayerCache.isAuthenticated(),
-            // which AuthMe only populates while processing PlayerJoinEvent.
-            // See isSessionEligibleByLastLogin().
             getLastIp = cls.getMethod("getLastIp", String.class);
             getLastLoginTime = cls.getMethod("getLastLoginTime", String.class);
         } catch (Exception e) {
@@ -263,22 +216,10 @@ public class AuthMe implements Listener {
                 cachedBlindEffectEnabled = yaml.getBoolean("applyBlindEffect", false);
             }
 
-            // AuthMe's own settings.sessions.* -- same keys AuthMe's own
-            // session-service check uses (enabled / timeout in minutes).
-            // Read directly rather than via reflection into AuthMe's
-            // Settings class, matching how cachedBlindEffectEnabled above
-            // is already read, since the YAML keys are far more stable
-            // across AuthMe versions than its internal class layout.
             cachedSessionsEnabled = yaml.getBoolean("settings.sessions.enabled", false);
             cachedSessionTimeoutMinutes = yaml.getLong("settings.sessions.timeout", 10);
-
             cachedAuthMeCaptchaEnabled = yaml.getBoolean("Security.captcha.useCaptcha", false);
             cachedPremiumEnabled = yaml.getBoolean("settings.enablePremium", false);
-
-            // Record the mtime we just read *as of this successful parse*
-            // so ensureAuthMeConfigFresh() below can tell whether a later
-            // "/authme reload" (which rewrites this file in place but
-            // fires no event we can listen for) has since changed it.
             cachedConfigLastModified = file.lastModified();
         } catch (Exception e) {
             plugin.getLogger().warning("Could not read AuthMe config.yml: " + e.getMessage());
@@ -287,24 +228,6 @@ public class AuthMe implements Listener {
             cachedPremiumEnabled = false;
         }
     }
-
-    /**
-     * Cheap freshness check for the settings.sessions.* cache (and the
-     * other cachedXxx fields refreshed alongside it), called right before
-     * anything that depends on cachedSessionTimeoutMinutes /
-     * cachedSessionsEnabled. "/authme reload" rewrites AuthMe's config.yml
-     * in place and reloads AuthMe's in-process Settings from it, but does
-     * not disable/re-enable the plugin and fires no event AuthMeBia can
-     * observe -- so without this, AuthMeBia would keep using whatever
-     * timeout it last cached (from startup or the last "/authmebia
-     * reload") even after an admin changed and reloaded AuthMe's own
-     * timeout, making isSessionEligibleByLastLogin() disagree with
-     * AuthMe's own SessionService about how long a session lasts. A
-     * single File.lastModified() stat is cheap enough to call on every
-     * join; the (much more expensive) full YAML re-parse in
-     * refreshAuthMeConfigCache() only actually runs when the mtime has
-     * moved, i.e. only right after a real AuthMe config reload happened.
-     */
     private void ensureAuthMeConfigFresh() {
         org.bukkit.plugin.Plugin authme = plugin.getServer().getPluginManager().getPlugin("AuthMe");
         if (authme == null) authme = plugin.getServer().getPluginManager().getPlugin("AuthMeReloaded");
@@ -337,13 +260,6 @@ public class AuthMe implements Listener {
 
         if (plugin.cfg().sessionAutologinEnabled()
                 && isSessionEligibleByLastLogin(name, IpGuard.resolveIp(connection))) {
-            // AuthMe's own session feature would honor this join too (same
-            // IP within settings.sessions.timeout) -- skip the dialog like
-            // the bypass list above and let AuthMe's own PlayerJoinEvent
-            // handling grant the session as it normally would. See
-            // isSessionEligibleByLastLogin for why this checks AuthMe's
-            // persisted login record directly instead of asking AuthMe for
-            // a decision it has not made yet at this point in the join.
             return;
         }
 
@@ -495,13 +411,6 @@ public class AuthMe implements Listener {
                 && !(plugin.cfg().sessionAutologinEnabled()
                         && (isSessionAuthenticated(player.getName())
                                 || isSessionEligibleByLastLogin(player.getName(), Util.ipOf(player))))) {
-            // isSessionAuthenticated() reflects AuthMe's own decision, but
-            // is only reliable here if AuthMe's PlayerJoinEvent handler
-            // has already run -- both plugins register at the default
-            // NORMAL priority, so Bukkit does not guarantee that ordering.
-            // isSessionEligibleByLastLogin() does not depend on that
-            // ordering at all (see its doc comment), so it is checked
-            // either way as a fallback that cannot miss due to a race.
             Cfg cfg = resolveEffectiveCfg(uuid);
             boolean registered = isRegisteredByName(player.getName());
             boolean recover = registered && plugin.recoverStore().isFlagged(uuid);
@@ -525,17 +434,6 @@ public class AuthMe implements Listener {
                     }
                 });
             } else if (numericMode) {
-                // Client protocol is below dialog.min_protocol_version, so
-                // vanilla dialog packets can't be rendered at all. AuthMe's
-                // own plain /login and /register commands still work for
-                // password mode, but there is no way to type a PIN/slider
-                // code through a chat command -- fall back to an
-                // inventory-GUI numpad so pin/slider servers still work for
-                // old clients. Password mode is left alone here; those
-                // players use AuthMe's own commands as before. This reuses
-                // the exact same wrong-password/attempt-limit/ipGuard/2FA
-                // logic as the dialog path, just swapping AuthInput for
-                // InventoryAuthInput as the input source.
                 runOnPlayer(player, () -> {
                     if (recover) {
                         Recover.showRecoverInventoryFallback(player, cfg, this, () -> {
@@ -719,20 +617,6 @@ public class AuthMe implements Listener {
         });
     }
 
-    /**
-     * Runs forceOp (forceRegister/forceLogin) after the player has
-     * (post-join, in-game) submitted the register/login dialog.
-     *
-     * forceOp fires on the next tick and, exactly like login already
-     * does, lets doForceRegister/doForceLogin's own awaitLogin/awaitRegister
-     * (backed by the real LoginEvent/RegisterEvent/FailedLoginEvent
-     * listeners below) be the thing that's actually waited on -- a real
-     * response instead of a guessed delay. The register/login dialogs
-     * themselves are shown with DialogAfterAction.WAIT_FOR_RESPONSE, so
-     * the client already shows its own waiting state until the next
-     * dialog (or a close) arrives -- no separate wait dialog is needed
-     * here.
-     */
     private void runLater(Player player, Runnable task, long ticks) {
         long delay = Math.max(1L, ticks);
         if (plugin.isFolia()) {
@@ -801,15 +685,6 @@ public class AuthMe implements Listener {
             return false;
         }
     }
-
-    /**
-     * Returns a BedrockCfg (dialog.bedrock.* overrides applied) if this
-     * connection is detected as a Bedrock/Floodgate player, otherwise the
-     * plugin's normal Cfg unchanged. Detection alone (isFloodgatePlayer)
-     * only affects dialog presentation here -- it is never used as an
-     * identity/security signal; see the security note in Floodgate.java for
-     * why bedrock_autologin requires a verified linked account instead.
-     */
     private Cfg resolveEffectiveCfg(UUID uuid) {
         Cfg base = plugin.cfg();
         if (com.authmebia.listeners.floodgate.Floodgate.isFloodgatePlayer(uuid)) {
@@ -817,26 +692,6 @@ public class AuthMe implements Listener {
         }
         return base;
     }
-
-    /**
-     * Resolves whether this connecting player should be auto-logged-in
-     * without ever seeing the register/login dialog, per auto.
-     * premium_autologin / auto.bedrock_autologin (both default false).
-     *
-     * Returns the verified Java premium UUID to use for the account if so,
-     * or null if neither path applies (falls through to the normal dialog
-     * with no indication to the player that either check was attempted).
-     *
-     * premium_autologin reuses isPremiumSkip's exact invariant (offline/v3
-     * UUIDs, i.e. connectingUuid.version() != 4, can never match) -- it is
-     * the same check, just also triggering an automatic forceRegister/
-     * forceLogin instead of only skipping the dialog.
-     *
-     * bedrock_autologin only trusts a Bedrock connection if Floodgate
-     * reports a verified linked Java account for that Bedrock UUID (see
-     * Floodgate.getLinkedJavaUuid). Being a Floodgate player alone is never
-     * sufficient; see the security note on Floodgate.java.
-     */
     private UUID resolveAutoLoginJavaUuid(UUID connectingUuid, String name) {
         Cfg cfg = plugin.cfg();
 
@@ -846,16 +701,7 @@ public class AuthMe implements Listener {
 
         if (cfg.bedrockAutologinEnabled()
                 && com.authmebia.listeners.floodgate.Floodgate.isFloodgatePlayer(connectingUuid)) {
-            if (cfg.bedrockAutoLoginMode() == com.authmebia.cfg.BedrockAutoLoginMode.GEYSER) {
-                // UNSAFE mode: trusts any Floodgate/Geyser connection with no
-                // linked-account verification at all. Logs in using the
-                // connecting Bedrock UUID itself (the account this specific
-                // connection maps to), not a Java premium UUID -- there is
-                // no verified Java identity to use in this mode. Whether
-                // this is actually safe depends entirely on Geyser's own
-                // auth-type setting (online vs offline) on the Geyser side,
-                // which this plugin has no way to check; see the warning in
-                // config.yml under auto.bedrock_mode.
+            if (cfg.bedrockAutoLoginMode() == com.authmebia.cfg.BedrockCfg.AutoLoginMode.GEYSER) {
                 return connectingUuid;
             }
 
@@ -867,16 +713,6 @@ public class AuthMe implements Listener {
 
         return null;
     }
-
-    /**
-     * Runs on the async thread (called from onJoin). Registers the account
-     * with AuthMe if it does not already exist (using an unguessable
-     * internal placeholder password the player never sees), then forces
-     * login, in the same forceRegister -> forceLogin order used everywhere
-     * else in this file. Once authenticated, shows the mandatory password-
-     * set dialog exactly once so the player's real AuthMe password is never
-     * left as the internal placeholder.
-     */
     private void completeAutoLogin(Player player) {
         String name = player.getName();
         boolean registered = isRegisteredByName(name);
@@ -896,59 +732,7 @@ public class AuthMe implements Listener {
                         player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}))
         ), 5L);
     }
-
-    /**
-     * Replicates AuthMe's own session eligibility check (the same
-     * comparison AuthMe's SessionService.fetchSessionStatus performs:
-     * database.hasSession(name) gate, then matching IP within
-     * settings.sessions.timeout) directly against AuthMe's persisted
-     * PlayerAuth data, instead of asking AuthMe whether it has already
-     * decided.
-     *
-     * This exists because the earlier approach -- polling
-     * PlayerCache.isAuthenticated(name) from this plugin's
-     * AsyncPlayerConnectionConfigureEvent handler -- can never work: AuthMe
-     * only evaluates its session feature and populates PlayerCache from
-     * its own PlayerJoinEvent listener (management.performJoin, called
-     * from AuthMe's PlayerListener#onPlayerJoin), and PlayerJoinEvent does
-     * not fire until after the configuration phase (and therefore after
-     * AsyncPlayerConnectionConfigureEvent) has already completed. No
-     * amount of waiting inside the configuration-phase handler can see a
-     * decision AuthMe has not made yet, because AuthMe has not even
-     * started making it -- this is a fixed ordering, not a race that a
-     * longer timeout could close.
-     *
-     * What AuthMe actually persists, independently of this join's timing,
-     * is the PlayerAuth record from the player's last successful login:
-     * getLastIp() and getLastLoginTime(), both already public,
-     * non-reflection AuthMeApi methods (AuthMeApi itself checks its
-     * in-memory PlayerCache first and falls back to the database). That
-     * record exists before this join begins, so it can be read and
-     * compared right here in the configuration phase, without waiting on
-     * anything AuthMe hasn't done yet -- reproducing the same
-     * name+ip+timeout comparison AuthMe's own session check makes, using
-     * AuthMe's own settings.sessions.* values (see
-     * refreshAuthMeConfigCache).
-     *
-     * getLastIp/getLastLoginTime alone are not sufficient: AuthMe writes
-     * lastIp/lastLogin on every quit of an already-logged-in player
-     * (AsynchronousQuit), regardless of whether the session feature is
-     * enabled and regardless of the separate hasSession flag. hasSession
-     * is only set on a successful manual login (AsynchronousLogin) and is
-     * cleared on /logout, on quit while sessions are disabled, and
-     * immediately after a session is resumed once (AuthMe's own session
-     * is one-time-use). dataSource.hasSession(name) is checked first here
-     * to match that gate before comparing IP/timeout.
-     *
-     * @param name the player's name
-     * @param ip the IP address the player is connecting from this time
-     *           (see IpGuard.resolveIp), or null if unavailable
-     */
     public boolean isSessionEligibleByLastLogin(String name, String ip) {
-        // Pick up any settings.sessions.* change made by a bare "/authme
-        // reload" before comparing against it -- see
-        // ensureAuthMeConfigFresh()'s doc comment for why this can't just
-        // rely on refreshAuthMeConfigCache() having already been called.
         ensureAuthMeConfigFresh();
         if (!cachedSessionsEnabled || name == null || ip == null) return false;
         if (getLastIp == null || getLastLoginTime == null) return false;
@@ -960,39 +744,16 @@ public class AuthMe implements Listener {
             String lastIp = (String) getLastIp.invoke(api, name);
             if (lastIp == null) return false;
             if (!lastIp.equalsIgnoreCase(ip)) {
-                // AuthMe's own behavior: a session never survives an IP
-                // change, unconditionally, regardless of how recent the
-                // login was.
                 return false;
             }
             Object lastLoginObj = getLastLoginTime.invoke(api, name);
             if (!(lastLoginObj instanceof java.time.Instant lastLogin)) return false;
             long elapsedMs = System.currentTimeMillis() - lastLogin.toEpochMilli();
-            // AuthMe requires elapsedMs to be strictly positive and below
-            // the timeout window; a non-positive elapsed time (clock skew
-            // placing lastLogin in the future) is treated as invalid
-            // rather than as an always-valid session, and a
-            // non-positive timeout makes the session always invalid,
-            // matching AuthMe's own SessionService.fetchSessionStatus.
             return elapsedMs > 0 && elapsedMs < cachedSessionTimeoutMinutes * 60_000L;
         } catch (Exception e) {
             return false;
         }
     }
-
-    /**
-     * Checks AuthMe's own PlayerCache (bound by name) to see if AuthMe has
-     * already authenticated this player in memory for the current join --
-     * including via its own session feature. Unlike
-     * isSessionEligibleByLastLogin() above, this reflects a decision AuthMe
-     * has actually made, so it is only reliable once AuthMe's own
-     * PlayerJoinEvent handling for this join has run -- which is not
-     * guaranteed relative to this plugin's own PlayerJoinEvent listener,
-     * since both register at the same default priority. Called alongside
-     * isSessionEligibleByLastLogin() as a cheap first check that can
-     * short-circuit the (very slightly more work) fallback, not as the
-     * sole source of truth.
-     */
     public boolean isSessionAuthenticated(String name) {
         if (playerCache == null || pcIsAuthenticatedByName == null || name == null) return false;
         try {
@@ -1002,7 +763,6 @@ public class AuthMe implements Listener {
             return false;
         }
     }
-
 
     public boolean isEmailVerificationActive() {
         if (!plugin.cfg().emailEnabled()) return false;
@@ -1021,7 +781,6 @@ public class AuthMe implements Listener {
             return false;
         }
     }
-
     public String getStoredEmail(String name) {
         if (dataSource == null || dsGetAuth == null || authGetEmail == null || name == null) return null;
         try {
@@ -1032,7 +791,6 @@ public class AuthMe implements Listener {
             return null;
         }
     }
-
     public void storeEmail(String name, String email) {
         if (dataSource == null || dsGetAuth == null || dsUpdateEmail == null || authSetEmail == null) return;
         try {
@@ -1044,11 +802,9 @@ public class AuthMe implements Listener {
             plugin.getLogger().warning("storeEmail failed for " + name + ": " + e.getMessage());
         }
     }
-
     public void registerAndLogin(Player player, String password) {
         runLater(player, () -> doForceRegister(player, password), 1L);
     }
-
     private void doForceRegister(Player player, String password) {
         UUID uuid = player.getUniqueId();
         CompletableFuture<Boolean> future = awaitLogin(player, AUTH_RESULT_TIMEOUT_MS);
@@ -1074,7 +830,6 @@ public class AuthMe implements Listener {
             finishRegisterLogin(player);
         });
     }
-
     private void finishRegisterLogin(Player player) {
         runOnPlayer(player, () -> { clearBlindEffect(player); closeDialog(player); });
         String email = pendingEmail.remove(player.getUniqueId());
@@ -1085,7 +840,6 @@ public class AuthMe implements Listener {
             runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
         }
     }
-
     private void clearBlindEffect(Player player) {
         if (!cachedBlindEffectEnabled) return;
         if (player.hasPotionEffect(PotionEffectType.BLINDNESS)) {
@@ -1096,7 +850,6 @@ public class AuthMe implements Listener {
     public void overrideCachedAuthMeCaptchaEnabled(boolean value) {
         debugCaptchaOverride = value;
     }
-
     public void overrideCachedEmailEnabled(boolean value) {
         debugEmailOverride = value;
     }
@@ -1112,7 +865,6 @@ public class AuthMe implements Listener {
             return false;
         }
     }
-
     public boolean checkTotpCode(String name, String code) {
         if (totpAuthenticator == null || dataSource == null || dsGetAuth == null || totpCheckCode == null) return false;
         try {

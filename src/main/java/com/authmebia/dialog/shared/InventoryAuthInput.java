@@ -20,21 +20,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
-/**
- * Chest-GUI numpad used ONLY as a fallback for clients whose protocol
- * version is below dialog.min_protocol_version (see Version.supportsDialogs)
- * when the server's auth_mode.mode is pin or slider. Dialogs are a vanilla
- * feature clients that old cannot render at all; the plain-password AuthMe
- * /login and /register commands remain available to them as before, but
- * that gives no way to enter a PIN/slider code, so this provides an
- * inventory-based numpad instead. There is a single shared numpad layout
- * for both pin and slider modes (no separate slider variant), producing the
- * same numeric-string result AuthInput's PIN dialog would.
- *
- * Only usable post-spawn (a real Player/Inventory is required), so this is
- * only wired into the post-spawn dialog path in AuthMe.java, never the
- * pre-spawn/configuration-phase path.
- */
 public final class InventoryAuthInput implements Listener {
 
     private static final int[] DIGIT_SLOTS = {
@@ -66,19 +51,9 @@ public final class InventoryAuthInput implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         SESSIONS.remove(event.getPlayer().getUniqueId());
     }
-
     public static void clearSession(UUID uuid) {
         SESSIONS.remove(uuid);
     }
-
-    /**
-     * Opens the numpad GUI for the player. onConfirm receives the entered
-     * numeric string once its length equals cfg's pin/slider length
-     * (whichever the server is configured to use) and Confirm is clicked.
-     * onLogout runs if the player clicks the Logout item or closes the
-     * inventory without confirming (matches the dialog behavior of
-     * disconnecting/cancelling on close).
-     */
     public static void open(Player player, Cfg cfg, String statusLine, Consumer<String> onConfirm, Runnable onLogout) {
         int length = cfg.authMode() == com.authmebia.dialog.Mode.SLIDER ? cfg.sliderLength() : cfg.pinLength();
         Session session = new Session(cfg, length, statusLine, onConfirm, onLogout);
@@ -167,13 +142,6 @@ public final class InventoryAuthInput implements Listener {
         if (session == null) return;
         if (session.suppressClose) return;
         if (event.getInventory() != session.currentInventory) return;
-
-        // Player closed the numpad without confirming (ESC, inventory key,
-        // etc). Treat this the same as clicking Logout, matching the
-        // dialog's behavior where dismissing it re-shows it or disconnects
-        // depending on dialog.allow_close -- for this fallback GUI, closing
-        // always disconnects, since re-opening automatically on every close
-        // would fight the player's own ESC key.
         SESSIONS.remove(player.getUniqueId());
         session.onLogout.run();
     }

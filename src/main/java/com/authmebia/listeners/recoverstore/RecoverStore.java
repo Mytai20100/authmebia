@@ -1,43 +1,37 @@
 package com.authmebia.listeners.recoverstore;
 
 import com.authmebia.AuthMeBia;
+import com.authmebia.data.PlayerDataStore;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.io.IOException;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class RecoverStore {
 
     private final AuthMeBia plugin;
+    private final PlayerDataStore store;
     private final Set<UUID> flagged = ConcurrentHashMap.newKeySet();
 
-    public RecoverStore(AuthMeBia plugin) {
+    public RecoverStore(AuthMeBia plugin, PlayerDataStore store) {
         this.plugin = plugin;
+        this.store = store;
         load();
     }
 
-    private File rootDir() {
-        return new File(plugin.getDataFolder(), "data");
-    }
-
-    private File fileFor(UUID uuid) {
-        return new File(new File(rootDir(), uuid.toString()), "player.yml");
-    }
-
     private void load() {
-        File[] dirs = rootDir().listFiles(File::isDirectory);
+        File[] dirs = store.listPlayerDirs();
         if (dirs == null) return;
         for (File dir : dirs) {
-            File file = new File(dir, "player.yml");
-            if (!file.exists()) continue;
             try {
-                YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+                UUID uuid = UUID.fromString(dir.getName());
+                YamlConfiguration yaml = store.load(uuid);
                 if (yaml.getBoolean("recover", false)) {
-                    flagged.add(UUID.fromString(dir.getName()));
+                    flagged.add(uuid);
                 }
             } catch (IllegalArgumentException e) {
                 plugin.getLogger().warning("Skipping recover entry with invalid folder name: " + dir.getName());
@@ -50,26 +44,21 @@ public final class RecoverStore {
     }
 
     public boolean flag(UUID uuid, String name) {
-        File file = fileFor(uuid);
-        File parent = file.getParentFile();
-        if (!parent.exists() && !parent.mkdirs()) {
-            plugin.getLogger().warning("Failed to create data folder for " + uuid);
-            return false;
-        }
-
-        YamlConfiguration yaml = file.exists()
-                ? YamlConfiguration.loadConfiguration(file)
-                : new YamlConfiguration();
-        if (name != null) yaml.set("name", name);
-        yaml.set("uuid", uuid.toString());
-        yaml.set("recover", true);
-        yaml.set("recover_requested", Instant.now().toString());
-
+        ReentrantLock lock = store.lockFor(uuid);
+        lock.lock();
         try {
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().warning("Failed to flag " + uuid + " for recovery: " + e.getMessage());
-            return false;
+            YamlConfiguration yaml = store.load(uuid);
+            if (name != null) yaml.set("name", name);
+            yaml.set("uuid", uuid.toString());
+            yaml.set("recover", true);
+            yaml.set("recover_requested", Instant.now().toString());
+
+            if (!store.save(uuid, yaml)) {
+                plugin.getLogger().warning("Failed to flag " + uuid + " for recovery");
+                return false;
+            }
+        } finally {
+            lock.unlock();
         }
         flagged.add(uuid);
         return true;
@@ -77,27 +66,32 @@ public final class RecoverStore {
 
     public void clear(UUID uuid) {
         flagged.remove(uuid);
-        File file = fileFor(uuid);
-        if (!file.exists()) return;
 
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        yaml.set("recover", null);
-        yaml.set("recover_requested", null);
-
-        boolean stillBypass = yaml.getBoolean("bypass", false);
-        if (!stillBypass) {
-            if (file.delete()) {
-                File dir = file.getParentFile();
-                String[] remaining = dir != null ? dir.list() : null;
-                if (remaining != null && remaining.length == 0) dir.delete();
-            }
-            return;
-        }
-
+        ReentrantLock lock = store.lockFor(uuid);
+        lock.lock();
         try {
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().warning("Failed to clear recover flag for " + uuid + ": " + e.getMessage());
+            File file = store.fileFor(uuid);
+            YamlConfiguration yaml = store.load(uuid);
+            boolean hadAnyData = file.exists() || yaml.contains("recover");
+            if (!hadAnyData) return;
+
+            yaml.set("recover", null);
+            yaml.set("recover_requested", null);
+
+            boolean stillHasData = yaml.getBoolean("bypass", false)
+                    || yaml.contains("toasts_shown") || yaml.contains("dismissed");
+            if (stillHasData) {
+                if (!store.save(uuid, yaml)) {
+                    plugin.getLogger().warning("Failed to clear recover flag for " + uuid);
+                }
+                return;
+            }
+
+            if (!store.deleteIfEmpty(file)) {
+                plugin.getLogger().warning("Failed to clear recover flag for " + uuid);
+            }
+        } finally {
+            lock.unlock();
         }
     }
 }

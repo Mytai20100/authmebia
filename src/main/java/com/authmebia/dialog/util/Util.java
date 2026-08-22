@@ -21,15 +21,6 @@ public final class Util {
         return sb.toString();
     }
 
-    /**
-     * Generates a random internal placeholder password, used only for
-     * accounts created via auto.premium_autologin / auto.bedrock_autologin
-     * (AuthMe requires some password on file even though the account is
-     * about to log in without one being typed). The player is always shown
-     * the mandatory password-set dialog (dialog/premium/Premium.java)
-     * immediately after, which overwrites this value; it is never displayed
-     * or communicated to the player.
-     */
     public static String genInternalPlaceholderPassword() {
         StringBuilder sb = new StringBuilder(32);
         String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";

@@ -2,10 +2,6 @@ package com.authmebia.notifications;
 
 import net.kyori.adventure.text.Component;
 
-/**
- * Configuration data for a single custom toast notification entry, parsed
- * from notifications.toasts in config.yml. See Cfg.toasts() for parsing.
- */
 public record Toast(
         String name,
         Check check,
@@ -16,7 +12,6 @@ public record Toast(
         int delaySeconds,
         Frame frame
 ) {
-
     public enum Check {
         FIRST_REGISTER,
         FIRST_LOGIN,
@@ -34,14 +29,6 @@ public record Toast(
             };
         }
     }
-
-    /**
-     * Vanilla advancement frame type. This only controls the small,
-     * non-configurable header line the client draws above the toast title
-     * ("Advancement Made!" / "Goal Reached!" / "Challenge Complete!",
-     * localized client-side) -- it has no effect on title/content, which
-     * always come from this toast's own title()/content().
-     */
     public enum Frame {
         TASK,
         GOAL,

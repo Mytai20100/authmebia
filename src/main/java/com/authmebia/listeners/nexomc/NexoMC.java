@@ -5,14 +5,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginEnableEvent;
 
-/**
- * Optional integration point for NexoMC (custom items/resource pack plugin,
- * successor to Oraxen). Controlled by integrations.nexomc.enabled in
- * config.yml.
- *
- * Same safety contract as ItemsAdder: only checks presence/API loadability,
- * never affects the auth flow, disables itself quietly if unavailable.
- */
 public final class NexoMC implements Listener {
 
     private final AuthMeBia plugin;

@@ -1,62 +1,41 @@
 package com.authmebia.listeners.bialist;
 
 import com.authmebia.AuthMeBia;
+import com.authmebia.data.PlayerDataStore;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.io.IOException;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class BiaList {
 
     private final AuthMeBia plugin;
+    private final PlayerDataStore store;
     private final Set<UUID> bypassed = ConcurrentHashMap.newKeySet();
 
-    public BiaList(AuthMeBia plugin) {
+    public BiaList(AuthMeBia plugin, PlayerDataStore store) {
         this.plugin = plugin;
+        this.store = store;
         load();
     }
 
-    private File rootDir() {
-        return new File(plugin.getDataFolder(), "data");
-    }
-
-    private File fileFor(UUID uuid) {
-        return new File(new File(rootDir(), uuid.toString()), "player.yml");
-    }
-
     private void load() {
-        File[] dirs = rootDir().listFiles(File::isDirectory);
+        File[] dirs = store.listPlayerDirs();
         if (dirs == null) return;
 
         for (File dir : dirs) {
-            File file = new File(dir, "player.yml");
-            if (!file.exists()) continue;
             try {
                 UUID uuid = UUID.fromString(dir.getName());
-                if (isBypassEntry(file)) bypassed.add(uuid);
+                YamlConfiguration yaml = store.load(uuid);
+                if (yaml.getBoolean("bypass", false)) bypassed.add(uuid);
             } catch (IllegalArgumentException e) {
                 plugin.getLogger().warning("Skipping bypass list entry with invalid folder name: " + dir.getName());
             }
         }
-    }
-
-    /**
-     * A player.yml is a bypass entry only if it explicitly says so
-     * ("bypass: true"). Previously this defaulted to true whenever the file
-     * existed but had neither a "bypass" nor a "recover" key -- a fragile
-     * assumption that broke when any other feature (e.g. toast tracking)
-     * wrote its own data into data/<uuid>/player.yml without also setting
-     * bypass: false, silently making that player skip all AuthMeBia dialogs.
-     * Requiring an explicit "bypass: true" removes that failure mode
-     * entirely: only Add.execute()/BiaList.add() ever set this key.
-     */
-    private boolean isBypassEntry(File file) {
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        return yaml.getBoolean("bypass", false);
     }
 
     public boolean isBypassed(UUID uuid) {
@@ -70,26 +49,21 @@ public final class BiaList {
     public boolean add(UUID uuid, String name) {
         if (bypassed.contains(uuid)) return false;
 
-        File file = fileFor(uuid);
-        File parent = file.getParentFile();
-        if (!parent.exists() && !parent.mkdirs()) {
-            plugin.getLogger().warning("Failed to create bypass list folder for " + uuid);
-            return false;
-        }
-
-        YamlConfiguration yaml = file.exists()
-                ? YamlConfiguration.loadConfiguration(file)
-                : new YamlConfiguration();
-        yaml.set("name", name);
-        yaml.set("uuid", uuid.toString());
-        yaml.set("added", Instant.now().toString());
-        yaml.set("bypass", true);
-
+        ReentrantLock lock = store.lockFor(uuid);
+        lock.lock();
         try {
-            yaml.save(file);
-        } catch (IOException e) {
-            plugin.getLogger().warning("Failed to save bypass list entry for " + name + ": " + e.getMessage());
-            return false;
+            YamlConfiguration yaml = store.load(uuid);
+            yaml.set("name", name);
+            yaml.set("uuid", uuid.toString());
+            yaml.set("added", Instant.now().toString());
+            yaml.set("bypass", true);
+
+            if (!store.save(uuid, yaml)) {
+                plugin.getLogger().warning("Failed to save bypass list entry for " + name);
+                return false;
+            }
+        } finally {
+            lock.unlock();
         }
 
         bypassed.add(uuid);
@@ -99,30 +73,32 @@ public final class BiaList {
     public boolean remove(UUID uuid) {
         boolean wasBypassed = bypassed.remove(uuid);
 
-        File file = fileFor(uuid);
-        boolean fileExisted = file.exists();
-        if (!fileExisted) return wasBypassed;
+        ReentrantLock lock = store.lockFor(uuid);
+        lock.lock();
+        try {
+            File file = store.fileFor(uuid);
+            YamlConfiguration yaml = store.load(uuid);
+            boolean hadAnyData = file.exists() || yaml.contains("bypass") || yaml.contains("recover");
+            if (!hadAnyData) return wasBypassed;
 
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+            if (yaml.getBoolean("recover", false)) {
+                yaml.set("bypass", false);
+                yaml.set("added", null);
+                store.save(uuid, yaml);
+                return true;
+            }
 
-        if (yaml.getBoolean("recover", false)) {
             yaml.set("bypass", false);
             yaml.set("added", null);
-            try {
-                yaml.save(file);
-            } catch (IOException e) {
-                plugin.getLogger().warning("Failed to update bypass entry for " + uuid + ": " + e.getMessage());
+            yaml.set("name", null);
+            boolean stillHasData = yaml.contains("recover") || yaml.contains("toasts_shown") || yaml.contains("dismissed");
+            if (stillHasData) {
+                store.save(uuid, yaml);
+            } else if (!store.deleteIfEmpty(file)) {
+                plugin.getLogger().warning("Failed to delete bypass list entry for " + uuid);
             }
-            return true;
-        }
-
-        if (!file.delete()) {
-            plugin.getLogger().warning("Failed to delete bypass list file for " + uuid);
-        }
-        File dir = file.getParentFile();
-        String[] remaining = dir != null ? dir.list() : null;
-        if (remaining != null && remaining.length == 0) {
-            dir.delete();
+        } finally {
+            lock.unlock();
         }
         return true;
     }

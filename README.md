@@ -3,7 +3,7 @@
 
 # authmebia
 
-A addon for AuthMe Reloaded that replaces chat-based login and register prompts with native Minecraft dialogs (1.21.6+). Players interact through proper GUI windows instead of typing commands in chat.
+A addon for AuthMe Reloaded that replaces dialog-based login and register prompts with dialog customizable.
 
 [GitHub](https://github.com/Mytai20100/authmebia)
 </div>
@@ -89,14 +89,17 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 
 ---
 
-## Requirements
-
-- Paper 1.21.6 or newer
-- AuthMe Reloaded 6.0.0
-- Java 21
+| Requirement      | Version  | Reason                                                  |
+|------------------|----------|---------------------------------------------------------|
+| Minecraft client | 1.21.6+  | Client Can render dialogs                               |
+| Paper            | ✔        |                                                         |
+| Folia            | ✔        |                                                         |
+| Java             | 21-25    |                                                         |
+| AuthMe Reloaded  | 6.0.0+   | Can load full features of authmebia                     |
+| ViaVersion       | Optional | Detect old-client , fallback to command login /register | 
 
 **Optional, only needed for specific features:**
-- Floodgate — required for `auto.bedrock_autologin` and the Bedrock dialog overrides (`dialog.bedrock`)
+- Floodgate/geyser — required for `auto.bedrock_autologin` and the Bedrock dialog (`dialog.bedrock`)
 - ItemsAdder / NexoMC / Oraxen — only needed if the corresponding `integrations.*` entry is enabled
 - PlaceholderAPI — only needed if you want `%placeholder%` expansions inside config.yml/lang text; without it, `{player}` substitution and MiniMessage formatting still work normally
 
@@ -108,19 +111,19 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 - Pre-spawn dialog mode: the login or register window blocks the connection phase, so the player spawns already authenticated
 - Post-spawn dialog mode: the window appears after the player joins the world
 - Three auth input modes: password text field, numeric PIN grid, or per-digit slider
-- **Old-client numpad fallback**: clients whose protocol version can't render dialogs at all (pre-1.21.6) get an inventory-GUI numpad instead when `auth_mode.mode` is `pin` or `slider`, since there's otherwise no way to type a code through AuthMe's plain chat commands. Works post-spawn only; uses the exact same wrong-code/attempt-limit/2FA logic as the normal PIN/slider dialog
+- **Old-client numpad/slider fallback**: clients whose protocol version can't render dialogs at all (pre-1.21.6) get an inventory-GUI numpad/slider instead when `auth_mode.mode` is `pin` or `slider`, since there's otherwise no way to type a code through AuthMe's plain chat commands. Works post-spawn only; uses the exact same wrong-code/attempt-limit/2FA logic as the normal PIN/slider dialog
 - Button layout switch (`dialog.button_layout`): arrange the main action buttons vertically (stacked) or horizontally (side by side) in both the register and login dialogs
 
 **Authentication**
-- Premium bypass: players whose UUID matches a premium account stored in AuthMe are detected automatically and skip all dialogs entirely
+- Premium bypass: players whose UUID matches a premium account stored in AuthMe are detected automatically and skip all dialogs of authmebia.
 - **Premium auto-login** (`auto.premium_autologin`, off by default): goes a step further than the premium bypass above — a matching premium UUID is automatically `forceRegister`'d (if needed) and `forceLogin`'d with no dialog at all, then shown a one-time mandatory password-set dialog so the account still has a real AuthMe password on file
 - **Bedrock auto-login** (`auto.bedrock_autologin`, off by default): the same automatic login, but for Bedrock players connecting through Geyser/Floodgate. `auto.bedrock_mode` controls how much this trusts: `link` (default, safe) only applies if Floodgate reports the player's account as linked to a verified Java premium account; `geyser` (opt-in, unsafe unless Geyser's own online auth-type is enabled) trusts any Bedrock/Geyser connection with no linked-account check at all
-- **Bedrock dialog support**: Bedrock players see the same register/login/recover/rule/captcha dialogs as Java players, reusing all the same logic. `dialog.bedrock` lets you optionally override button width, input width, and the auth input mode (password/PIN/slider) just for Bedrock clients, since some Bedrock devices have a smaller usable dialog area
-- **Session auto-login** (`auto.session_autologin`, on by default): skips the dialog entirely for a returning player that AuthMe's own session feature (`settings.sessions.enabled`/`timeout` in AuthMe's own config.yml) would already authenticate by matching IP and timeout. This reproduces AuthMe's own session comparison rather than asking AuthMe whether it already decided, since AuthMe does not evaluate its session feature until later in the join than this plugin's dialog decision is made. Has no effect at all unless AuthMe's own session feature is also enabled
+- **Bedrock dialog support**: Bedrock players see the same register/login/recover/rule/captcha/custom_screen dialogs as Java players, reusing all the same logic. `dialog.bedrock` lets you optionally override button width, input width, and the auth input mode (password/PIN/slider) just for Bedrock clients, since some Bedrock devices have a smaller usable dialog area
+- **Session auto-login** (`auto.session_autologin`, on by default): skips the dialog for a returning player that AuthMe's own session feature (`settings.sessions.enabled`/`timeout` in AuthMe's own config.yml) would already authenticate by matching IP and timeout. This reproduces AuthMe's own session comparison rather than asking AuthMe whether it already decided, since AuthMe does not evaluate its session feature until later in the join than this plugin's dialog decision is made. Has no effect at all unless AuthMe's own session feature is also enabled
 - TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
 - Captcha dialog synced with AuthMe's captcha setting
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
-- **Self-service "Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on file (set during email-verified registration), sends a reset code to it through AuthMe's SMTP config, and — once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
+- **"Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on authme (set during email-verified registration), sends a reset code to it through AuthMe's SMTP config, and |  once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
 - Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online. The reset dialog now follows `auth_mode.mode` (password/PIN/slider), matching the register and login dialogs instead of always showing a text field
 - Server rules agreement checkbox shown to new players before their account is created
 - Login attempt limit with kick after too many wrong passwords
@@ -128,7 +131,7 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 - IP ban with escalating ban durations after repeated failed logins across sessions
 
 **Notifications**
-- Custom toast notifications (`notifications.toasts`): show the small achievement-style popup in the corner of the screen on `first_register`, `first_login`, `first_message`, or `first_advancement`, with a configurable title, description, item icon, sound, and advancement frame (`task`/`goal`/`challenge`). Each toast only ever fires once per player
+- Custom notifications (`notifications.toasts`): show the small achievement popup in the corner of the screen on `first_register`, `first_login`, `first_message`, or `first_advancement`, with a configurable title, description, item icon, sound, and advancement frame (`task`/`goal`/`challenge`).
 - `/bia notifier <toast> <player> show [seconds]` lets an admin preview any configured toast on an online player without touching its persisted "already shown" state, so testing never affects whether it fires for real later
 
 **Third-party item plugin integrations**
@@ -142,29 +145,26 @@ A addon for AuthMe Reloaded that replaces chat-based login and register prompts 
 
 **Extras**
 - **Custom inline icons** (`custom_icons` + `<icons:name>`): define named icons (atlas sprites, player heads, or full item icons) once in config.yml, then drop `<icons:name>` anywhere inside any dialog title, content, or button label to show it inline. Item-type icons can also be shown above a custom screen's content via that screen's `icon:` field
-- PlaceholderAPI support: any config.yml or lang text field can use `%placeholder%` expansions from installed PlaceholderAPI extensions (e.g. LuckPerms prefixes, Vault ranks), on top of the plugin's own `{player}` substitution and MiniMessage formatting. Only active while rendering text for a specific player, and never throws or blocks if PlaceholderAPI is not installed
 - Link buttons inside dialogs (open URL, copy to clipboard)
 - Per-button click sounds: nearly every dialog button (submit, logout, agree, verify, resend, forgot password, custom screen buttons, etc.) can play its own Minecraft sound on click
-- Discord webhook notification on player join or first registration
-- Welcome image sent to the player after first login
+- Welcome sent to the player after first login(like image canva in someone server discord) use wedhook of discord.
 - ViaVersion support: players on older protocol versions fall back to AuthMe's normal flow automatically
-- Folia support: detects Folia at startup and automatically switches to its region-aware scheduler instead of the standard Bukkit scheduler
 
 ---
 
 ## Commands
 
-| Command | Permission | Description |
-|---|---|---|
-| `/bia reload` | OP | Reload config and lang |
-| `/bia info` | - | Show plugin version and status |
-| `/bia add <player>` | `authmebia.bypass` | Add player to bypass list |
-| `/bia rm <player>` | `authmebia.bypass` | Remove player from bypass list |
-| `/bia recover <player>` | `bia.admin.recover` | Force password reset on next login |
-| `/bia screen <id> [player]` | OP | Show a custom screen to a player |
-| `/bia screen reset <player> [id]` | OP | Reset a player's "closed forever" checkbox for a custom screen (omit `id` to reset all screens) |
-| `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game |
-| `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state |
+| Command | Permission | Description                                                                                                 |
+|---|---|-------------------------------------------------------------------------------------------------------------|
+| `/bia reload` | OP | Reload config and lang                                                                                      |
+| `/bia info` | - | Show plugin version and status                                                                              |
+| `/bia add <player>` | `authmebia.bypass` | Add player to bypass dialog list                                                                            |
+| `/bia rm <player>` | `authmebia.bypass` | Remove player from bypass dialog list                                                                       |
+| `/bia recover <player>` | `bia.admin.recover` | Force password reset on next login                                                                          |
+| `/bia screen <id> [player]` | OP | Show a custom screen to a player                                                                            |
+| `/bia screen reset <player> [id]` | OP | Reset a player's "closed forever" checkbox for a custom screen (omit `id` to reset all screens)             |
+| `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game                                                                                       |
+| `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state                  |
 
 Debug features: `captcha`, `email`, `register`, `login`, `recover`, `rule`.
 Use `show` with `captcha` or `email` to preview those dialogs directly without going through the login flow.
@@ -173,7 +173,7 @@ Use `show` with `captcha` or `email` to preview those dialogs directly without g
 
 ## AuthMe API used
 
-AuthMeBia hooks into AuthMe Reloaded through reflection rather than a compile-time API dependency, so it stays compatible across minor AuthMe builds without recompiling.
+AuthMeBia hooks into AuthMe Reloaded through reflection rather than a compile-time API dependency.So it can run on any old-authme version.
 
 | Class | Usage |
 |---|---|
@@ -187,7 +187,7 @@ AuthMeBia hooks into AuthMe Reloaded through reflection rather than a compile-ti
 | `fr.xephi.authme.events.RegisterEvent` | Detect successful registration |
 | `fr.xephi.authme.events.FailedLoginEvent` | Detect failed login |
 
-AuthMeBia also optionally bridges to Floodgate's API the same way (reflection, no compile-time dependency), only when `auto.bedrock_autologin` or a Bedrock dialog override is in use:
+AuthMeBia also optionally bridges to Floodgate's API the same way used in the AuthMe Reloaded API, only when `auto.bedrock_autologin` or a Bedrock dialog override is in use:
 
 | Class | Usage |
 |---|---|
@@ -212,7 +212,7 @@ cd authmebia
 2. IntelliJ will detect the Gradle project automatically and import it.
 3. Wait for the Gradle sync to finish and dependencies to download.
 4. Open the **Gradle** panel (right side) and run `Tasks > shadow > shadowJar`.
-5. The output jar is in `build/libs/`.
+5. The output jar is in `out/artifacts/`.
 
 ### Command line
 
@@ -220,7 +220,7 @@ cd authmebia
 ./gradlew shadowJar
 ```
 
-The built jar is placed in `build/libs/`. Copy it to your server's `plugins/` folder alongside AuthMe Reloaded.
+The built jar is placed in `out/artifacts/`. Copy it to your server's `plugins/` folder alongside AuthMe Reloaded.
 
 ---
 
@@ -373,6 +373,10 @@ login_attempts:
   enabled: true
   max_tries: 5
 
+otp_attempts:
+  enabled: true
+  max_tries: 5
+
 login_timeout:
   enabled: true
   seconds: 60
@@ -451,7 +455,7 @@ custom_screens:
         sound: ""
       - label: "<#5865F2>Discord</#5865F2>"
         action: open_url
-        value: "https://discord.gg/abc"
+        value: "https://discord.gg/linux"
         width: 200
 
 ip_ban:
@@ -477,7 +481,7 @@ config_version: 2
 <summary>notifications.toasts and integrations</summary>
 
 ```yaml
-# Custom toast notifications shown once per player per check.
+# Custom notifications shown once per player per check.
 notifications:
   toasts:
     - name: welcome_toast

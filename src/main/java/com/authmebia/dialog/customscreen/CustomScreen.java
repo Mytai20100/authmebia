@@ -51,23 +51,8 @@ public record CustomScreen(
             };
         }
     }
-
-    /**
-     * What happens to this screen for a player once they dismiss it,
-     * depending on whether they ticked its checkbox_label checkbox first.
-     * Only meaningful when checkboxLabel is non-null -- a screen with no
-     * checkbox configured always behaves as SHOW every time, regardless
-     * of this value.
-     */
     public enum CheckboxAction {
-        // Ticking the checkbox before dismissing permanently suppresses
-        // this screen for that player (persisted -- see
-        // ScreenDismissStore), across future joins and restarts. Leaving
-        // it unticked is treated as "skip for now": the screen is not
-        // marked dismissed and will show again next time it's triggered.
         CLOSE,
-        // The checkbox is purely informational/cosmetic here -- ticked or
-        // not, the screen always shows again next time it's triggered.
         SHOW;
 
         public static CheckboxAction parse(String raw) {
@@ -98,16 +83,6 @@ public record CustomScreen(
         }
     }
 
-    /**
-     * Whether this screen should be skipped for an automatic trigger
-     * (postjoin/prejoin), because the player already ticked its checkbox
-     * and dismissed it for good. Deliberately NOT checked inside
-     * showCustomScreen()/showCustomScreenBlocking() themselves -- those
-     * are also the entry point for "/bia screen <id> [player]", which is
-     * an explicit admin action that must always show the screen
-     * regardless of a player's past dismissal. Only the automatic
-     * postjoin/prejoin call sites in AuthMe.java call this first.
-     */
     public static boolean isAutoDismissedFor(com.authmebia.dialog.customscreen.CustomScreen screen, UUID uuid) {
         return screen.checkboxAction() == CheckboxAction.CLOSE
                 && AuthMeBia.get().screenDismissStore().isDismissed(uuid, screen.id());
@@ -170,12 +145,6 @@ public record CustomScreen(
         } catch (NoClassDefFoundError ignored) {}
     }
 
-    /**
-     * The DialogInput.bool() field for this screen's checkbox, if
-     * configured. Uses a fixed field name (DISMISS_INPUT_KEY) since each
-     * screen only ever has zero or one checkbox -- there's nothing to
-     * disambiguate.
-     */
     private static final String DISMISS_INPUT_KEY = "dismiss_forever";
 
     private static List<DialogInput> checkboxInputs(com.authmebia.dialog.customscreen.CustomScreen screen) {
@@ -185,21 +154,6 @@ public record CustomScreen(
                 .build());
     }
 
-    /**
-     * Wraps a button's own callback so that, right before running it,
-     * this screen's checkbox (if any) is read from the dialog response
-     * and -- only when checkbox_action is CLOSE and the box was ticked --
-     * persisted via ScreenDismissStore so the screen never shows again
-     * for this player. Leaving the box unticked (or the screen having no
-     * checkbox at all, or checkbox_action: show) leaves nothing recorded,
-     * so the screen shows again next time it's triggered, same as before
-     * this feature existed.
-     *
-     * uuid is threaded through explicitly (rather than pulled off the
-     * Audience parameter) because the pre-join blocking path only has a
-     * PlayerConfigurationConnection, not yet a real Player -- see
-     * showCustomScreenBlocking.
-     */
     private static DialogActionCallback dismissAwareCallback(
             com.authmebia.dialog.customscreen.CustomScreen screen, UUID uuid,
             DialogActionCallback inner, CountDownLatch latchOrNull) {
@@ -220,14 +174,6 @@ public record CustomScreen(
         };
     }
 
-    /**
-     * Resolves screen.iconName() (a "custom_icons:" entry) against the
-     * screen's title. SPRITE/PLAYER_HEAD icons are prepended straight into
-     * the title Component; ITEM icons can't be inlined into text, so they
-     * come back as a separate leading DialogBody instead (see IconSpec).
-     * If iconName is unset or fails to resolve, this is a no-op and just
-     * returns the screen's plain title with no leading body.
-     */
     private record IconTitle(Component title, DialogBody leadingBody) {}
 
     private static IconTitle resolveIcon(com.authmebia.dialog.customscreen.CustomScreen screen, String playerName) {
@@ -251,18 +197,6 @@ public record CustomScreen(
                 if (btn.sound() != null && a instanceof Player p) Dialoglib.playSound(p, btn.sound());
             };
             buttons.add(switch (btn.action()) {
-                // OPEN_URL/COPY stay Paper's client-only staticAction --
-                // there is no server-side equivalent of ClickEvent.openUrl
-                // /copyToClipboard to call from inside a customClick
-                // callback, and staticAction itself never round-trips to
-                // the server at all. That means a checkbox on a screen
-                // whose only button is OPEN_URL or COPY can never be read
-                // (nothing ever calls the server to report it), so
-                // checkbox_action: close only takes effect through a
-                // close/command/console button. This is a real Paper API
-                // limitation, not a bug in this class; see the
-                // checkbox_action config comment, which calls this out so
-                // admins don't configure a checkbox that can never fire.
                 case OPEN_URL -> ActionButton.builder(btn.label())
                         .width(btn.width())
                         .action(DialogAction.staticAction(

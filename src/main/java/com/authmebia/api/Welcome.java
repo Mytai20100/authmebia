@@ -20,39 +20,29 @@ import java.net.URL;
 import java.nio.file.Files;
 
 public class Welcome {
-
     private final AuthMeBia plugin;
-
     public Welcome(AuthMeBia plugin) {
         this.plugin = plugin;
     }
-
     public void handle(Player player) {
         if (!plugin.cfg().welcomeImageEnabled()) return;
-
         try {
             File jsonFile = new File(plugin.getDataFolder(), "welcome.json");
             if (!jsonFile.exists()) return;
-
             String raw = Files.readString(jsonFile.toPath());
             JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
-
             JsonObject sizeObj = root.getAsJsonObject("welcome_size");
             int width = sizeObj.get("width").getAsInt();
             int height = sizeObj.get("height").getAsInt();
             int radial = root.has("radial") ? root.get("radial").getAsInt() : 0;
-
             BufferedImage canvas = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = canvas.createGraphics();
-            // Dispose is in a finally block so native graphics resources are
-            // always released even if a layer throws an exception mid-draw.
             try {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
                 if (radial > 0) {
                     g.setClip(new RoundRectangle2D.Double(0, 0, width, height, radial, radial));
                 }
-
                 JsonArray layers = root.getAsJsonArray("layers");
                 layers.asList().stream()
                         .map(JsonElement::getAsJsonObject)
@@ -65,11 +55,9 @@ public class Welcome {
             } finally {
                 g.dispose();
             }
-
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ImageIO.write(canvas, "png", out);
             byte[] imageBytes = out.toByteArray();
-
             if (plugin.cfg().discordEnabled()) {
                 String webhook = plugin.cfg().discordWebhook();
                 if (!webhook.isEmpty()) {
@@ -80,7 +68,6 @@ public class Welcome {
             plugin.getLogger().warning("Welcome image error: " + e.getMessage());
         }
     }
-
     private void drawLayer(Graphics2D g, JsonObject layer, Player player, int canvasW, int canvasH) {
         try {
             String name = layer.has("name") ? layer.get("name").getAsString() : "";
@@ -106,7 +93,6 @@ public class Welcome {
                 }
                 return;
             }
-
             if (layer.has("patch")) {
                 String patch = layer.get("patch").getAsString();
                 if (patch.equals("{player_avatar}")) {
@@ -123,7 +109,6 @@ public class Welcome {
                 BufferedImage img = fetchImage(layer.get("url").getAsString());
                 if (img != null) g.drawImage(img, x, y, size, size, null);
             }
-
             if (layer.has("color") && layer.has("font")) {
                 String text = name.equals("player_name") ? player.getName() : name;
                 g.setColor(Color.decode(layer.get("color").getAsString()));
@@ -135,13 +120,7 @@ public class Welcome {
             plugin.getLogger().warning("Layer draw error: " + e.getMessage());
         }
     }
-
     private BufferedImage fetchPlayerHead(Player player) {
-        // Prefer the skin the player's client actually sent for this session.
-        // This works correctly in both online-mode and offline-mode servers,
-        // since the skin texture URL comes from the player's profile/session,
-        // not from a third-party lookup keyed by name (which fails for
-        // offline-mode UUIDs and for renamed accounts).
         try {
             org.bukkit.profile.PlayerTextures textures = player.getPlayerProfile().getTextures();
             URL skinUrl = textures != null ? textures.getSkin() : null;
@@ -154,10 +133,6 @@ public class Welcome {
         } catch (Exception e) {
             plugin.getLogger().warning("Skin texture read error: " + e.getMessage());
         }
-
-        // Fallback: only reached if the profile has no skin texture cached yet
-        // (rare, e.g. very first tick after join). Falls back to UUID-based
-        // lookup, since crafatar does not support name-based lookups.
         try {
             String url = "https://crafatar.com/avatars/" + player.getUniqueId() + "?size=64&overlay";
             return fetchImage(url);
@@ -179,21 +154,12 @@ public class Welcome {
         }
         return null;
     }
-
-    /**
-     * Crops the 8x8 head region out of a full skin texture and scales it up.
-     * Supports both legacy 64x32 and modern 64x64 skin layouts.
-     * Renders the base head layer plus the hat/overlay layer (for players
-     * using hats, hair, etc. on the second skin layer).
-     */
     private BufferedImage cropHead(BufferedImage skin) {
         int headSize = 8;
         BufferedImage head = new BufferedImage(headSize, headSize, BufferedImage.TYPE_INT_ARGB);
         Graphics2D hg = head.createGraphics();
         try {
-            // Base head layer.
             hg.drawImage(skin, 0, 0, headSize, headSize, 8, 8, 16, 16, null);
-            // Hat overlay layer (only present on 64x64 skins).
             if (skin.getHeight() >= 64) {
                 hg.drawImage(skin, 0, 0, headSize, headSize, 40, 8, 48, 16, null);
             }
@@ -202,7 +168,6 @@ public class Welcome {
         }
         return head;
     }
-
     private BufferedImage fetchImage(String url) {
         try {
             Request req = new Request.Builder().url(url).build();

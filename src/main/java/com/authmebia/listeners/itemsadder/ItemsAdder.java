@@ -5,16 +5,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginEnableEvent;
 
-/**
- * Optional integration point for ItemsAdder (custom items/resource pack
- * plugin). Controlled by integrations.itemsadder.enabled in config.yml.
- *
- * This class only verifies that ItemsAdder is present and its API class is
- * loadable; it never touches the auth flow directly. If ItemsAdder is
- * missing or its API changes in a way that breaks the class lookup, the
- * integration silently disables itself and logs at info level, without
- * throwing or affecting registration/login.
- */
 public final class ItemsAdder implements Listener {
 
     private final AuthMeBia plugin;

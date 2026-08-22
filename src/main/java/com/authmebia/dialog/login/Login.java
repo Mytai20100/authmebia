@@ -169,14 +169,6 @@ public final class Login {
         });
     }
 
-    /**
-     * Same wrong-password/attempt-limit/ipGuard/2FA logic as
-     * showLoginNumericIngame, but for clients whose protocol version is too
-     * old to render dialogs at all (see Version.supportsDialogs). Only
-     * called when auth_mode.mode is pin or slider; password mode has no
-     * equivalent fallback since AuthMe's own /login command already covers
-     * plain-password entry for old clients.
-     */
     public static void showLoginInventoryFallback(Player player, Cfg cfg, Lang lang, AuthMe authMe,
                                                     com.authmebia.listeners.ipguard.IpGuard ipGuard) {
         Cfg.withPlayerContext(player.getName(), () ->
@@ -301,13 +293,6 @@ public final class Login {
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
 
-            // See Dialoglib.escapeGuard(): dialog.allow_close: false is
-            // documented as "re-opens the auth dialog immediately when the
-            // player dismisses it". allowClose being true here does not
-            // disarm that promise on its own -- when allow_close is true
-            // the player is allowed to close the dialog on purpose (e.g. to
-            // check something else first), so this only re-arms the check
-            // when allow_close is false, matching the documented behavior.
             Dialoglib.escapeGuard(player, !allowClose, cfg.dialogReopenDelayTicks(),
                     () -> player.isOnline() && !authMe.isAuthenticated(player),
                     () -> showLoginIngame(player, cfg, lang, authMe, ipGuard, wrongTries));

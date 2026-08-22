@@ -1,9 +1,11 @@
 package com.authmebia.dialog.twofactor;
 
 import com.authmebia.AuthMe;
+import com.authmebia.AuthMeBia;
 import com.authmebia.cfg.Cfg;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.lang.Lang;
+import com.authmebia.listeners.ipguard.IpGuard;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -16,6 +18,7 @@ import org.bukkit.entity.Player;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.authmebia.dialog.Dialoglib.*;
@@ -30,12 +33,16 @@ public final class TwoFactor {
     }
 
     private static boolean show2FABlockingInner(PlayerConfigurationConnection conn, String name, Cfg cfg, Lang lang, AuthMe authMe) {
+        IpGuard ipGuard = AuthMeBia.get().ipGuard();
+        String ip = IpGuard.resolveIp(conn);
         AtomicReference<String> error = new AtomicReference<>(null);
+        AtomicInteger wrongTries = new AtomicInteger(0);
 
         while (conn.isConnected()) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean success = new AtomicBoolean(false);
             AtomicBoolean disconnect = new AtomicBoolean(false);
+            AtomicBoolean kicked = new AtomicBoolean(false);
 
             String inputLabel = error.get() != null
                     ? cfg.totp2faInputLabel() + "  [" + error.get() + "]"
@@ -46,8 +53,13 @@ public final class TwoFactor {
                     String code = r.getText("totp_code");
                     if (code != null && authMe.checkTotpCode(name, code.trim())) {
                         success.set(true);
-                    } else {
-                        error.set(cfg.totp2faWrongCodeError());
+                        ipGuard.clearFailures(ip);
+                        return;
+                    }
+                    error.set(cfg.totp2faWrongCodeError());
+                    ipGuard.recordFailure(ip, cfg, lang);
+                    if (cfg.otpAttemptsEnabled() && wrongTries.incrementAndGet() >= cfg.otpMaxTries()) {
+                        kicked.set(true);
                     }
                 } finally {
                     latch.countDown();
@@ -67,6 +79,7 @@ public final class TwoFactor {
             ));
 
             await(latch);
+            if (kicked.get()) return false;
             if (disconnect.get()) return false;
             if (success.get()) return true;
         }
@@ -74,10 +87,12 @@ public final class TwoFactor {
     }
 
     public static void show2FAIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, Runnable onSuccess) {
-        Cfg.withPlayerContext(player.getName(), () -> show2FAIngame(player, cfg, lang, authMe, onSuccess, null));
+        Cfg.withPlayerContext(player.getName(), () ->
+                show2FAIngame(player, cfg, lang, authMe, onSuccess, AuthMeBia.get().ipGuard(), new AtomicInteger(0), null));
     }
 
-    private static void show2FAIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, Runnable onSuccess, String error) {
+    private static void show2FAIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, Runnable onSuccess,
+                                       IpGuard ipGuard, AtomicInteger wrongTries, String error) {
         try {
             String name = player.getName();
             String ip = Util.ipOf(player);
@@ -95,10 +110,16 @@ public final class TwoFactor {
                                 if (!(a instanceof Player p)) return;
                                 String code = r.getText("totp_code");
                                 if (code != null && authMe.checkTotpCode(name, code.trim())) {
+                                    ipGuard.clearFailures(ip);
                                     onSuccess.run();
-                                } else {
-                                    show2FAIngame(p, cfg, lang, authMe, onSuccess, cfg.totp2faWrongCodeError());
+                                    return;
                                 }
+                                ipGuard.recordFailure(ip, cfg, lang);
+                                if (cfg.otpAttemptsEnabled() && wrongTries.incrementAndGet() >= cfg.otpMaxTries()) {
+                                    p.kick(lang.disconnectTooManyAttempts(name, ip));
+                                    return;
+                                }
+                                show2FAIngame(p, cfg, lang, authMe, onSuccess, ipGuard, wrongTries, cfg.totp2faWrongCodeError());
                             })),
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), (r, a) -> {
                                 if (a instanceof Player p) p.kick(lang.disconnectLogout(name, ip));

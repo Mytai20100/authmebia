@@ -20,7 +20,7 @@ lang: en
 # authenticate with AuthMe's own plain /login and /register commands
 # instead. Remove a player with /bia rm <player>. This list has no key
 # here in config.yml -- it is stored per player under
-# plugins/AuthMeBia/data/<uuid>/player.yml, and managed entirely through
+# plugins/AuthMeBia/data/<uuid>/data.yml, and managed entirely through
 # those two commands. See doc/README.md for the full file format.
 
 # Automatic authentication skip for already-verified identities.
@@ -448,6 +448,14 @@ login_attempts:
   # Number of wrong password attempts allowed before the player is kicked.
   max_tries: 5
 
+otp_attempts:
+  # If true, kicks the player after too many wrong 2FA/OTP code attempts
+  # (2FA verification, forgot-password email code, registration email code).
+  enabled: true
+
+  # Number of wrong code attempts allowed before the player is kicked.
+  max_tries: 5
+
 login_timeout:
   # If true, kicks or re-shows the dialog if the player hasn't authenticated
   # within the time limit after the auth dialog is first shown.
@@ -466,7 +474,7 @@ recover:
   # bia.admin.recover) to flag a player; on their next login (or immediately
   # if they are online) they are shown this two-field reset dialog instead of
   # the normal login dialog. The flag is stored per player under
-  # plugins/AuthMeBia/data/<uuid>/player.yml (the same file as the bypass list).
+  # plugins/AuthMeBia/data/<uuid>/data.yml (the same file as the bypass list).
 
   # Title of the reset dialog. Supports MiniMessage.
   title: "<gold>Reset Password</gold>"
@@ -822,8 +830,9 @@ integrations:
 
 ip_ban:
   # If true, temporarily bans an IP address after repeated wrong password
-  # attempts across login sessions from that IP (spam/brute-force
-  # protection). Ban duration escalates with repeated offenses.
+  # or wrong 2FA/OTP code attempts across login sessions from that IP
+  # (spam/brute-force protection). Ban duration escalates with repeated
+  # offenses.
   enabled: false
 
   # Number of wrong password attempts from the same IP (across sessions)

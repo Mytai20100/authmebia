@@ -19,19 +19,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Shows custom toast notifications (config: notifications.toasts) by
- * dynamically registering a hidden vanilla advancement per toast and briefly
- * granting/revoking it to the target player. This is the standard mechanism
- * for fully custom toast content on vanilla clients, since the toast popup
- * itself is client-rendered from advancement data (see doc comment on
- * showToast below).
- *
- * Session-scoped "first_message" / "first_advancement" checks are tracked
- * in-memory per online session; "first_register" / "first_login" are backed
- * by AuthMe's own events combined with persistent per-player state in
- * ToastStore so they only ever fire once, even across restarts.
- */
 @SuppressWarnings("deprecation")
 public final class ToastListener implements Listener {
 
@@ -94,16 +81,6 @@ public final class ToastListener implements Listener {
         });
     }
 
-    /**
-     * Looks up a configured toast by its "name" field and shows it to the
-     * given player immediately, bypassing the normal check/first-time logic
-     * entirely. Used by /bia notifier for manually testing a toast's
-     * appearance without needing to actually trigger the real event (e.g.
-     * registering again) and without marking it as permanently shown in
-     * ToastStore, so the real trigger still fires normally afterward.
-     *
-     * Returns false if no toast with that name exists in config.yml.
-     */
     public boolean showToastByNameForTest(Player player, String toastName, Integer overrideDelaySeconds) {
         boolean[] found = {false};
         com.authmebia.cfg.Cfg.withPlayerContext(player.getName(), () -> {
@@ -117,32 +94,9 @@ public final class ToastListener implements Listener {
         return found[0];
     }
 
-    /**
-     * Clears the record of toasts that failed to register this run, so a
-     * fixed config.yml gets retried on the next attempt instead of being
-     * silently skipped forever until a full server restart. Called from
-     * /bia reload.
-     */
     public void resetFailedAdvancements() {
         registeredAdvancementKeys.clear();
     }
-
-    /**
-     * Vanilla clients only render toast popups from advancement grants; there
-     * is no direct packet/API for an arbitrary toast. We register a hidden,
-     * zero-requirement advancement (parent-less, not shown in the tree) with
-     * the configured title/description/icon, grant it instantly, then revoke
-     * it a tick later so it does not persist in the player's advancement
-     * list. If advancement registration fails for any reason (older API,
-     * plugin conflicts), the toast is skipped entirely rather than throwing.
-     *
-     * Client-side limitation, not a bug: every advancement toast has a
-     * second, smaller line above display.title that the client draws
-     * entirely on its own from the frame type ("task" -> "Advancement
-     * Made!", localized into the viewing player's own client language).
-     * There is no field in the advancement JSON that controls it, so
-     * toast.title() below only ever reaches the larger line.
-     */
     private void showToast(Player player, Toast toast, Integer overrideDelaySeconds) {
         try {
             Advancement advancement = getOrCreateAdvancement(toast);

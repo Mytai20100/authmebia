@@ -20,20 +20,6 @@ public class Cfg {
     private final AuthMeBia plugin;
     FileConfiguration config;
     private static final MiniMessage MM = MiniMessage.miniMessage();
-
-    /**
-     * MiniMessage tag "<icons:name>" -- lets any title/content/button
-     * label string place a "custom_icons:" entry (see IconSpec) at any
-     * position in the text, instead of it always being prepended to the
-     * title. Only SPRITE and PLAYER_HEAD icons can be inlined this way
-     * (an ITEM icon has no inline text representation, see
-     * IconSpec.toInlineComponent); an unknown name, a missing entry, or an
-     * ITEM-type entry all just resolve to nothing, so a bad tag never
-     * breaks the surrounding text. The resolved player name (for
-     * player_head icons using "{player}") comes from the same
-     * PLAYER_CONTEXT thread-local used for {player}/PlaceholderAPI
-     * substitution elsewhere in this class.
-     */
     private final TagResolver iconsTagResolver = TagResolver.resolver("icons", (args, ctx) -> {
         String name = args.popOr("icons tag requires a name, e.g. <icons:trial_key>").value();
         IconSpec spec = icon(name);
@@ -42,26 +28,6 @@ public class Cfg {
         return Tag.selfClosingInserting(inline == null ? Component.empty() : inline);
     });
 
-    /**
-     * Request-scoped player context for PlaceholderAPI substitution.
-     * Callers that are about to render dialog/message text for a specific
-     * player call withPlayerContext(name, () -> ...) around the block of
-     * Cfg accessor calls for that player; every Component/String accessor
-     * that goes through parse() during that block will run the text
-     * through PlaceholderAPI first (see applyPlaceholderApi below), on top
-     * of the existing {player} substitution and MiniMessage formatting.
-     * Outside of such a block (context null), behavior is unchanged from
-     * before PlaceholderAPI support was added.
-     *
-     * A ThreadLocal is used rather than adding a playerName parameter to
-     * all ~47 Component-returning accessors, which would require touching
-     * every call site across the dialog/ package and AuthMe.java. Dialog
-     * rendering always happens on a single thread per invocation (either
-     * the main/region thread for in-game dialogs, or the async
-     * configuration-phase thread for blocking dialogs), so this is safe as
-     * long as callers always use withPlayerContext to scope it rather than
-     * setting it and forgetting to clear it.
-     */
     private static final ThreadLocal<String> PLAYER_CONTEXT = new ThreadLocal<>();
 
     public static void withPlayerContext(String playerName, Runnable task) {
@@ -78,11 +44,6 @@ public class Cfg {
         }
     }
 
-    /**
-     * Same as withPlayerContext(String, Runnable), but for blocking calls
-     * that need to return a value (e.g. the entered password/code from a
-     * blocking pre-spawn dialog loop).
-     */
     public static <T> T withPlayerContextValue(String playerName, java.util.function.Supplier<T> task) {
         String previous = PLAYER_CONTEXT.get();
         PLAYER_CONTEXT.set(playerName);
@@ -102,13 +63,6 @@ public class Cfg {
         reload();
     }
 
-    /**
-     * Package-visible constructor used only by BedrockCfg (dialog.bedrock
-     * overrides): shares the already-loaded FileConfiguration from an
-     * existing Cfg instance instead of re-reading and reassigning it via
-     * reload(), so constructing a per-connection Bedrock view has no side
-     * effects on the plugin's config state.
-     */
     Cfg(AuthMeBia plugin, FileConfiguration sharedConfig) {
         this.plugin = plugin;
         this.config = sharedConfig;
@@ -137,8 +91,8 @@ public class Cfg {
         return config.getBoolean("auto.bedrock_autologin", false);
     }
 
-    public BedrockAutoLoginMode bedrockAutoLoginMode() {
-        return BedrockAutoLoginMode.parse(config.getString("auto.bedrock_mode", "link"));
+    public BedrockCfg.AutoLoginMode bedrockAutoLoginMode() {
+        return BedrockCfg.AutoLoginMode.parse(config.getString("auto.bedrock_mode", "link"));
     }
 
     public boolean dialogEnabled() {
@@ -246,19 +200,6 @@ public class Cfg {
     public boolean dialogAllowClose() {
         return config.getBoolean("dialog.allow_close", true);
     }
-
-    /**
-     * Delay, in ticks, before the reopen safeguard described by
-     * dialog.allow_close checks whether an in-game auth dialog with
-     * allow_close: false is still supposed to be on screen. See
-     * Dialoglib.escapeGuard() for why this is a delayed poll rather than
-     * an instant reaction -- Paper's Dialog API has no server event for
-     * the player dismissing a dialog, so this is the closest available
-     * approximation. Kept short by default so a dismissed dialog does not
-     * sit closed for long, but not effectively 0 either, to avoid
-     * fighting the client mid-render on every dialog open. Bounded to
-     * [1, 200] ticks (0.05s-10s).
-     */
     public long dialogReopenDelayTicks() {
         long ticks = config.getLong("dialog.reopen_delay_ticks", 10);
         if (ticks < 1) return 1;
@@ -289,12 +230,6 @@ public class Cfg {
         return Mode.parse(raw);
     }
 
-    /**
-     * The Java-side auth_mode.mode value, read directly rather than through
-     * authMode(), which BedrockCfg overrides to call bedrockAuthMode(). Using
-     * authMode() here would recurse back into bedrockAuthMode() forever for
-     * a BedrockCfg instance.
-     */
     private Mode javaAuthMode() {
         return Mode.parse(config.getString("auth_mode.mode", "password"));
     }
@@ -523,6 +458,15 @@ public class Cfg {
         return Math.max(1, tries);
     }
 
+    public boolean otpAttemptsEnabled() {
+        return config.getBoolean("otp_attempts.enabled", true);
+    }
+
+    public int otpMaxTries() {
+        int tries = config.getInt("otp_attempts.max_tries", 5);
+        return Math.max(1, tries);
+    }
+
     public boolean loginTimeoutEnabled() {
         return config.getBoolean("login_timeout.enabled", true);
     }
@@ -674,7 +618,7 @@ public class Cfg {
         return value != null ? value.toString() : fallback;
     }
 
-    // --- TOTP 2FA ---
+    // 2FA
 
     public boolean totp2faEnabled() {
         return config.getBoolean("totp_2fa.enabled", false);
@@ -700,7 +644,7 @@ public class Cfg {
         return config.getString("totp_2fa.wrong_code_error", "Invalid code");
     }
 
-    // --- Custom screens ---
+    // Custom screens
 
     public CustomScreen customScreen(String id) {
         for (Map<?, ?> map : config.getMapList("custom_screens")) {
@@ -764,14 +708,8 @@ public class Cfg {
                 iconName, checkboxLabel, checkboxAction);
     }
 
-    // --- Custom icons ---
+    // Custom icons
 
-    /**
-     * Looks up a named entry under "custom_icons:" in config.yml and parses
-     * it into an IconSpec. Returns null if the name is null/blank, the
-     * section doesn't exist, or the entry fails to parse -- callers should
-     * treat null exactly like "no icon configured" (see IconSpec javadoc).
-     */
     public IconSpec icon(String name) {
         if (name == null || name.isBlank()) return null;
         org.bukkit.configuration.ConfigurationSection section =
@@ -780,7 +718,7 @@ public class Cfg {
         return IconSpec.parse(section.getValues(false));
     }
 
-    // --- Toast notifications ---
+    // notifications
 
     public List<com.authmebia.notifications.Toast> toasts() {
         List<com.authmebia.notifications.Toast> result = new ArrayList<>();
@@ -809,12 +747,11 @@ public class Cfg {
         return new com.authmebia.notifications.Toast(name, check, title, content, icon, sound, delay, frame);
     }
 
-    // --- Third-party item plugin integrations ---
+    // Third-party item plugin
 
     public boolean itemsAdderIntegrationEnabled() {
         return config.getBoolean("integrations.itemsadder.enabled", false);
     }
-
     public boolean nexoMcIntegrationEnabled() {
         return config.getBoolean("integrations.nexomc.enabled", false);
     }
@@ -826,7 +763,6 @@ public class Cfg {
     public boolean copyDefaultsIfMissing(String name) {
         return new java.io.File(plugin.getDataFolder(), name).exists();
     }
-
     private Component parse(String input) {
         if (input == null || input.isBlank()) return null;
         String withPapi = applyPlaceholderApiFromContext(input);
@@ -839,16 +775,6 @@ public class Cfg {
         }
         return result;
     }
-
-    /**
-     * Runs text through PlaceholderAPI's %placeholder% substitution using
-     * the thread-local player context set by withPlayerContext(), if any.
-     * Runs before MiniMessage parsing, so a placeholder expansion's own
-     * MiniMessage tags in its output still get formatted correctly. Falls
-     * through unchanged if there is no active player context, or if
-     * PlaceholderAPI is not installed -- see PlaceholderApi.apply() for the
-     * full fallback contract.
-     */
     private String applyPlaceholderApiFromContext(String input) {
         String playerName = PLAYER_CONTEXT.get();
         if (playerName == null || playerName.isBlank()) return input;

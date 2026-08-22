@@ -12,14 +12,6 @@ import java.util.List;
 
 import static com.authmebia.dialog.Dialoglib.*;
 
-/**
- * Mandatory password-set dialog shown exactly once, the first time a player
- * joins via auto.premium_autologin or auto.bedrock_autologin. Unlike
- * dialog/recover/Recover.java (an admin-triggered reset that can be
- * re-shown), this is only ever shown once because AuthMe.java calls this
- * exactly once right after the automatic forceRegister/forceLogin
- * completes, never re-queued.
- */
 @SuppressWarnings("UnstableApiUsage")
 public final class Premium {
 

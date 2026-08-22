@@ -41,18 +41,16 @@ public class Discord {
                 .addFormDataPart("file", filename,
                         RequestBody.create(imageBytes, MediaType.get("image/png")))
                 .build();
-
         Request request = new Request.Builder()
                 .url(webhookUrl)
                 .post(body)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                AuthMeBia.get().getLogger().warning("Discord image webhook failed: " + response.code());
+                AuthMeBia.get().getLogger().warning("Discord webhook failed: " + response.code());
             }
         } catch (IOException e) {
-            AuthMeBia.get().getLogger().warning("Discord image webhook error: " + e.getMessage());
+            AuthMeBia.get().getLogger().warning("Discord webhook error: " + e.getMessage());
         }
     }
 }

@@ -1,13 +1,9 @@
 # AuthMeBia — Documentation
 
-This folder contains documentation for AuthMeBia's configurable subsystems.
-All files mentioned below live inside `plugins/AuthMeBia/` unless stated otherwise.
-
 ---
 
 ## MiniMessage Formatting
 
-All text fields in `config.yml` and all language files support full
 [MiniMessage](https://docs.advntr.dev/minimessage/format.html) formatting:
 
 | Tag example | Effect |
@@ -23,41 +19,6 @@ All text fields in `config.yml` and all language files support full
 
 Use `{player}` anywhere as a placeholder for the player's name.
 Use `\n` inside any string to insert a line break.
-
-### PlaceholderAPI
-
-If PlaceholderAPI is installed, every text field that goes through the
-plugin's normal text-rendering path (dialog titles, content, button labels,
-error messages, chat messages) also resolves `%placeholder%` expansions from
-any installed PlaceholderAPI extension (e.g. LuckPerms prefixes, Vault
-ranks), on top of `{player}` substitution and MiniMessage formatting.
-
-This only applies while text is being rendered for a specific player (the
-call is scoped to that render, not global), and is a soft dependency: if
-PlaceholderAPI is not installed, or resolution fails for any reason, the
-text is used unchanged with no error.
-
----
-
-## Language / Localization (`lang/`)
-
-AuthMeBia externalizes all player-facing messages into YAML language files stored
-in `plugins/AuthMeBia/lang/`.  Two files are included out of the box:
-
-| File      | Language    |
-|-----------|-------------|
-| `lang/en.yml` | English |
-| `lang/vi.yml` | Vietnamese |
-
-### Selecting a language
-
-Set the `lang` key in `config.yml`:
-
-```yaml
-lang: en   # or: vi
-```
-
-Reload with `/bia reload` — no server restart needed.
 
 ### Message categories
 
@@ -110,7 +71,7 @@ All message values support:
 
 ---
 
-## Self-Service Password Recovery ("Forgot Password?")
+## Password Recovery ("Forgot Password?")
 
 In addition to admin-forced recovery (`/bia recover`), players can reset their
 own password from the login dialog itself, without any admin involvement.
@@ -131,7 +92,7 @@ own password from the login dialog itself, without any admin involvement.
 
 1. On the login dialog, the player clicks **Forgot Password?** (label set by
    `dialog.login.forgot_password.button`).
-2. If the account has no email on file, the player sees a message telling
+2. If the account has no email , the player sees a message telling
    them to contact an admin (`no_email_message`) and the flow stops there —
    nothing is sent.
 3. Otherwise, the player is asked to enter the email address registered to
@@ -221,9 +182,9 @@ context tied to a spawned entity.
 
 ## Brute-Force Protection
 
-Two independent settings protect against repeated wrong-password attempts.
-`login_attempts` is enabled by default; `ip_ban` is opt-in (disabled by
-default).
+Three independent settings protect against repeated wrong-password and
+wrong-code attempts. `login_attempts` and `otp_attempts` are enabled by
+default; `ip_ban` is opt-in (disabled by default).
 
 ### Login attempt limit (`login_attempts`)
 
@@ -238,11 +199,26 @@ session (the counter resets on each new connection). Enabled by default.
 The kick uses the `disconnect.too_many_attempts` message from the active
 language file.
 
+### OTP / 2FA attempt limit (`otp_attempts`)
+
+Same idea as `login_attempts`, but for one-time codes: the 2FA (TOTP) prompt
+shown after a correct password, the forgot-password email code, and the
+registration email code. Kicks the player after too many wrong codes within
+that session. Enabled by default.
+
+| Key | Description |
+|-----|-------------|
+| `enabled` | Master switch. Default: `true` |
+| `max_tries` | Number of wrong code attempts allowed before a kick (minimum 1) |
+
+Uses the same `disconnect.too_many_attempts` message as `login_attempts`.
+
 ### IP ban (`ip_ban`)
 
-Tracks wrong-password attempts per IP address across sessions (not just one
-login dialog), and issues a temporary Bukkit IP ban once the threshold is
-crossed. Repeated offenses from the same IP escalate to longer ban durations.
+Tracks wrong-password and wrong-OTP/2FA-code attempts per IP address across
+sessions (not just one dialog), and issues a temporary Bukkit IP ban once
+the threshold is crossed. Repeated offenses from the same IP escalate to
+longer ban durations.
 
 | Key | Description |
 |-----|-------------|
@@ -255,7 +231,7 @@ minutes, 1 hour, then 1 day for every offense after that. The ban reason
 shown to the player uses the `disconnect.ip_banned` message, with
 `{player_ip}` filled in.
 
-Both counters are tracked in memory and reset when the plugin restarts.
+All counters are tracked in memory and reset when the plugin restarts.
 
 ---
 
@@ -415,7 +391,7 @@ Examples:
 Sounds only play in the in-game (post-spawn) path. They have no effect during
 the pre-spawn blocking phase.
 
-### Showing a screen via command
+### Showing a screen command
 
 ```
 /bia screen <id>            Show screen to yourself (must be in-game)
@@ -437,7 +413,7 @@ AuthMeBia can show the small vanilla advancement-style toast popup in the
 corner of the screen on certain player milestones. Each toast is defined in
 `notifications.toasts` in `config.yml`.
 
-### Defining a toast
+### Defining a advencement 
 
 ```yaml
 notifications:
@@ -452,7 +428,7 @@ notifications:
       frame: task
 ```
 
-### Toast fields
+### fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -475,42 +451,24 @@ notifications:
 | `first_advancement` | The player's first advancement/achievement this session |
 
 Each toast only ever fires once per player per `check`.
-
-### Client-side limitation on `frame`
-
-Every vanilla advancement toast has two lines. The small line above is drawn
-entirely by the client from `frame` and is not otherwise configurable — it
-always reads "Advancement Made!" (`task`), "Goal Reached!" (`goal`), or
-"Challenge Complete!" (`challenge`), translated into the viewing player's own
-client language. The larger line is what `title` controls. There is no
-vanilla mechanism to remove the small line entirely.
-
-Changing `frame` on a toast that already registered earlier in the current
-server run requires a full restart to take effect (this also applies to
-changing `title`/`icon`/`content` on an already-registered toast — an
-existing Bukkit advancement-registration limitation, not specific to this
-plugin).
-
-### Previewing a toast (`/bia notifier`)
+### Previewing a advencement custom(`/bia notifier`)
 
 ```
 /bia notifier <toast_name> <player> show [seconds]
 ```
 
-Shows the named toast to an online player immediately, for testing. This
-never touches the toast's persisted "already shown" state, so previewing a
+Shows custom title advenment to an online player for testing/fun.So preview a
 toast never affects whether it still fires for real later. `[seconds]`
-optionally overrides the configured `delay` for this preview only. Requires
-OP. Tab completion lists configured toast names and online players.
+optionally overrides the configured `delay` for this preview only.
 
 ---
 
 ## Old Client Compatibility
 
-The vanilla Dialog UI used for register/login menus only exists from
+The Dialog UI used for register/login menus only exists from
 Minecraft 1.21.6 (protocol 771) onward. Clients on an older version
-(connecting through ViaVersion or a fork) cannot render a dialog packet at
-all -- if one is sent anyway, the connection just sits there until the
+(connecting through ViaVersion ) cannot render a dialog packet at
+all |  if one is sent anyway, the connection just sits there until the
 server's own network read-timeout eventually kicks the player, which looks
 like the connection freezing before a disconnect.
 
@@ -523,17 +481,7 @@ See the `dialog.min_protocol_version` comment in `config.yml` for details.
 
 ---
 
-## Platform Support (Paper / Folia)
-
-AuthMeBia detects at startup whether it is running on Folia (checking for
-`io.papermc.paper.threadedregions.RegionizedServer`) and switches every
-scheduled task — dialog timeouts, post-login delays, IP bans, welcome image
-delivery — to Folia's region-aware `AsyncScheduler` / per-entity scheduler
-instead of the standard Bukkit scheduler. No configuration is needed; this is
-automatic. `/bia info` reports the detected platform (Paper, Folia, or plain
-Bukkit).
-
-### AuthMe built-in dialog conflict check
+### AuthMe dialog check
 
 AuthMe itself has its own optional native dialog feature
 (`settings.registration.dialog.preJoin.enable` /
@@ -546,20 +494,17 @@ into it. Disable them in AuthMe's own config to resolve the warning.
 
 ---
 
-## Bypass List (`data/<uuid>/player.yml`)
+## Bypass List (`data/<uuid>/data.yml`)
 
-Some players need to skip every AuthMeBia dialog entirely -- pre-spawn,
-post-spawn, captcha, register, login, and rule -- and authenticate with
-AuthMe's own plain `/login` and `/register` commands instead, as if
-AuthMeBia were disabled for them specifically. This is managed through a
-bypass list.
+Some players need to skip every authmebia dialog same pre-spawn / post-spawn  
+authenticate with AuthMe's own command `/login` and `/register`.
 
 ### Commands
 
-| Command | Permission | Effect |
-|---------|------------|--------|
-| `/bia add <player>` or `/authmebia add <player>` | `authmebia.bypass` | Adds the player to the bypass list |
-| `/bia rm <player>` or `/authmebia rm <player>` | `authmebia.bypass` | Removes the player from the bypass list |
+| Command | Permission | Effect                                         |
+|---------|------------|------------------------------------------------|
+| `/bia add <player>` or `/authmebia add <player>` | `authmebia.bypass` | Adds the player to the bypass dialog list   |
+| `/bia rm <player>` or `/authmebia rm <player>` | `authmebia.bypass` | Removes the player from the bypass dialog list |
 
 The target player must either be online right now, or have joined this
 server before (so the server already has their UUID cached). New players
@@ -567,45 +512,48 @@ who have never connected cannot be added by name in advance.
 
 ### Storage format
 
-Each bypass entry is its own file at:
+All per-player data (bypass list, admin-forced recovery, shown toasts,
+dismissed custom screens) is merged into a single file at:
 
 ```
-plugins/AuthMeBia/data/<uuid>/player.yml
+plugins/AuthMeBia/data/<uuid>/data.yml
 ```
 
 ```yaml
-name: Notch
+name: Dragonlucky
 uuid: 069a79f4-44e9-4726-a5be-fca90e38aaf5
-added: "2026-06-22T10:15:30Z"
+added: "2067-09-22T10:15:30Z"
+bypass: true
+recover: false
+toasts_shown:
+  - first_login
+dismissed:
+  - welcome_notice
 ```
 
 | Field | Description |
 |-------|--------------|
-| `name` | The player's name at the time they were added |
+| `name` | The player's name at the time they were last added/flagged |
 | `uuid` | The player's UUID (also the folder name) |
-| `added` | UTC timestamp (ISO-8601) of when the entry was created |
+| `added` | UTC timestamp (ISO-8601) of when the bypass entry was created |
+| `bypass` | Whether the player is on the bypass list |
+| `recover` / `recover_requested` | Admin-forced password reset flag and its timestamp |
+| `toasts_shown` | List of toast names already shown to the player |
+| `dismissed` | List of custom-screen ids the player has permanently dismissed |
+
+This file used to be split across three separate files (`player.yml`,
+`toasts.yml`, `dismissed_screens.yml`) under the same `data/<uuid>/`
+folder. If any of those legacy files are still present when a player's
+data is next read, AuthMeBia automatically merges them into `data.yml`
+in place -- nothing is lost, and the old files are left on disk (unused)
+rather than deleted, purely as a safety margin.
 
 ---
 
-## Blindness Effect Interaction
+## Welcome (`welcome.json`)
 
-AuthMe can apply a `Blindness` potion effect to players until they log in
-(`settings.applyBlindEffect: true` in AuthMe's own `config.yml`). Because
-AuthMeBia authenticates players through AuthMe's `forceRegister`/
-`forceLogin` API methods rather than AuthMe's normal command flow, AuthMe's
-own blindness removal can occasionally run on the wrong tick relative to
-that force-login call and leave the effect stuck on an already-logged-in
-player. AuthMeBia detects this case and explicitly removes the effect
-immediately after every successful force-login/force-register, whenever
-AuthMe's `applyBlindEffect` setting is on. No configuration is needed for
-this; it is always active alongside that AuthMe setting.
-
----
-
-## Welcome Image (`welcome.json`)
-
-The welcome image is generated when a player registers and (optionally) posted
-to Discord. It is built from a layered canvas defined in `welcome.json`.
+The welcome is generated when a player registers and (optionally) posted
+to wedhook(discord). It is built from canvas in `welcome.json`.
 
 Enable the feature in `config.yml`:
 
@@ -617,7 +565,7 @@ welcome_image:
 If `discord.enabled` is `true` and a `discord.webhook_url` is set, the image is
 also sent to that webhook.
 
-### Top-level fields
+### fields
 
 | Field           | Type   | Required | Description |
 |-----------------|--------|----------|-------------|
@@ -670,10 +618,6 @@ Any other text layer (has `color` + `font` but a different name) draws its
   "size": 160
 }
 ```
-
-The plugin reads the player's skin from their live session, crops the 8×8 head
-region, and scales it to `size`×`size` pixels. Works in both online-mode and
-offline-mode. Falls back to Crafatar on rare texture-read failures.
 
 ### Full example
 

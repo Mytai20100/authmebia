@@ -37,15 +37,12 @@ public final class Forgot {
         String email;
         String code;
         long lastSent;
+        final AtomicInteger wrongTries = new AtomicInteger(0);
     }
-
     private Forgot() {}
-
     public static void clearSession(UUID uuid) {
         FORGOT_PASSWORD_SESSIONS.remove(uuid);
     }
-
-    // --- Blocking versions (called from Login) ---
 
     public static boolean forgotPasswordBlocking(PlayerConfigurationConnection conn, Cfg cfg, Lang lang, AuthMe authMe, String name) {
         String storedEmail = authMe.getStoredEmail(name);
@@ -136,14 +133,18 @@ public final class Forgot {
             AuthMeBia.get().getLogger().warning("Failed to email forgot-password code to " + email + " for " + name);
             return false;
         }
+        IpGuard ipGuard = AuthMeBia.get().ipGuard();
+        String ip = IpGuard.resolveIp(conn);
         long[] lastSent = { System.currentTimeMillis() };
         AtomicReference<String> error = new AtomicReference<>(null);
+        AtomicInteger wrongTries = new AtomicInteger(0);
 
         while (conn.isConnected()) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean verified = new AtomicBoolean(false);
             AtomicBoolean logout = new AtomicBoolean(false);
             AtomicBoolean resend = new AtomicBoolean(false);
+            AtomicBoolean kicked = new AtomicBoolean(false);
 
             int remaining = (int) Math.max(0, cfg.emailResendCooldown() - (System.currentTimeMillis() - lastSent[0]) / 1000);
             String codeLabel = error.get() != null ? cfg.emailCodeLabel() + "  [" + error.get() + "]" : cfg.emailCodeLabel();
@@ -153,8 +154,13 @@ public final class Forgot {
                     String typed = r.getText("code");
                     if (codeRef.get().equals(typed == null ? null : typed.trim())) {
                         verified.set(true);
-                    } else {
-                        error.set(cfg.emailWrongCodeError());
+                        ipGuard.clearFailures(ip);
+                        return;
+                    }
+                    error.set(cfg.emailWrongCodeError());
+                    ipGuard.recordFailure(ip, cfg, lang);
+                    if (cfg.otpAttemptsEnabled() && wrongTries.incrementAndGet() >= cfg.otpMaxTries()) {
+                        kicked.set(true);
                     }
                 } finally {
                     latch.countDown();
@@ -174,6 +180,7 @@ public final class Forgot {
             ));
 
             await(latch);
+            if (kicked.get()) return false;
             if (logout.get()) return false;
             if (verified.get()) return true;
             if (resend.get()) {
@@ -188,8 +195,6 @@ public final class Forgot {
         }
         return false;
     }
-
-    // --- In-game versions ---
 
     public static void forgotPasswordIngame(Player player, Cfg cfg, Lang lang, AuthMe authMe, IpGuard ipGuard, AtomicInteger wrongTries) {
         String name = player.getName();
@@ -221,10 +226,6 @@ public final class Forgot {
                                 }
                             })))
             ));
-            // See Dialoglib.escapeGuard() for the mechanism and its limits.
-            // isStillPending here just re-checks the player is still
-            // unauthenticated -- this dialog itself has no other state to
-            // track (it is a dead-end notice, not a multi-step form).
             Dialoglib.escapeGuard(player, !allowClose, cfg.dialogReopenDelayTicks(),
                     () -> player.isOnline() && !authMe.isAuthenticated(player),
                     () -> forgotPasswordNoEmailIngame(player, cfg, lang, authMe, ipGuard, wrongTries));
@@ -298,6 +299,7 @@ public final class Forgot {
         int remaining = (int) Math.max(0, cfg.emailResendCooldown() - (System.currentTimeMillis() - s.lastSent) / 1000);
         String codeLabel = codeErr != null ? cfg.emailCodeLabel() + "  [" + codeErr + "]" : cfg.emailCodeLabel();
         String ip = Util.ipOf(player);
+        IpGuard otpGuard = AuthMeBia.get().ipGuard();
 
         DialogActionCallback resendCb = (r, a) -> {
             if (!(a instanceof Player p)) return;
@@ -321,11 +323,18 @@ public final class Forgot {
                                         if (!(a instanceof Player p)) return;
                                         String typed = r.getText("code");
                                         if (s.code.equals(typed == null ? null : typed.trim())) {
+                                            otpGuard.clearFailures(ip);
                                             FORGOT_PASSWORD_SESSIONS.remove(uuid);
                                             Recover.showRecoverIngame(p, cfg, authMe, () -> com.authmebia.dialog.login.Login.showLoginIngame(p, cfg, lang, authMe, ipGuard, wrongTries));
-                                        } else {
-                                            showForgotPasswordVerifyIngame(p, cfg, lang, authMe, ipGuard, wrongTries, cfg.emailWrongCodeError());
+                                            return;
                                         }
+                                        otpGuard.recordFailure(ip, cfg, lang);
+                                        if (cfg.otpAttemptsEnabled() && s.wrongTries.incrementAndGet() >= cfg.otpMaxTries()) {
+                                            FORGOT_PASSWORD_SESSIONS.remove(uuid);
+                                            p.kick(lang.disconnectTooManyAttempts(p.getName(), ip));
+                                            return;
+                                        }
+                                        showForgotPasswordVerifyIngame(p, cfg, lang, authMe, ipGuard, wrongTries, cfg.emailWrongCodeError());
                                     }),
                                     resendBtn(cfg, remaining, resendCb)),
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), (r, a) -> {

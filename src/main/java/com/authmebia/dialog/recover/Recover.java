@@ -23,14 +23,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static com.authmebia.dialog.Dialoglib.*;
 
-/**
- * Bug fix (see task 2.5): showRecoverBlocking/showRecoverIngame previously
- * always rendered the two-field text password dialog regardless of
- * auth_mode.mode, so PIN/slider servers still saw a text-entry recovery
- * dialog. Both entry points now branch on cfg.authMode() first, exactly the
- * way Login.java and Register.java already do, and reuse AuthInput's
- * PIN/slider collectors instead of duplicating that logic.
- */
 @SuppressWarnings("UnstableApiUsage")
 public final class Recover {
 
@@ -127,11 +119,6 @@ public final class Recover {
             AuthInput.showSliderIngame(player, cfg, statusLine, onConfirm, onLogout);
         }
     }
-
-    /**
-     * Same as showRecoverNumericIngame, but for clients too old to render
-     * dialogs. Only called when auth_mode.mode is pin or slider.
-     */
     public static void showRecoverInventoryFallback(Player player, Cfg cfg, AuthMe authMe, Runnable onSuccess) {
         Cfg.withPlayerContext(player.getName(), () -> {
             String name = player.getName();

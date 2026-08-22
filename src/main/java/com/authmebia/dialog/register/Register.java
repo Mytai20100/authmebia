@@ -277,10 +277,6 @@ public final class Register {
         }
     }
 
-    /**
-     * Same as showRegisterNumericIngame, but for clients too old to render
-     * dialogs. Only called when auth_mode.mode is pin or slider.
-     */
     public static void showRegisterInventoryFallback(Player player, Cfg cfg, Lang lang, AuthMe authMe) {
         String name = player.getName();
         String ip = Util.ipOf(player);

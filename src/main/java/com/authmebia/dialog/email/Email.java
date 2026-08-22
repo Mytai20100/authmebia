@@ -1,11 +1,13 @@
 package com.authmebia.dialog.email;
 
 import com.authmebia.AuthMe;
+import com.authmebia.AuthMeBia;
 import com.authmebia.cfg.Cfg;
 import com.authmebia.dialog.Dialoglib;
 import com.authmebia.dialog.register.Register;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.lang.Lang;
+import com.authmebia.listeners.ipguard.IpGuard;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
 import io.papermc.paper.registry.data.dialog.action.DialogActionCallback;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.authmebia.dialog.Dialoglib.*;
 
@@ -30,6 +33,7 @@ public final class Email {
         String password;
         String code;
         long lastSent;
+        final AtomicInteger wrongTries = new AtomicInteger(0);
     }
 
     private Email() {}
@@ -72,6 +76,7 @@ public final class Email {
         String codeLabel = codeErr != null ? cfg.emailCodeLabel() + "  [" + codeErr + "]" : cfg.emailCodeLabel();
         String ip = player.getAddress() != null && player.getAddress().getAddress() != null
                 ? player.getAddress().getAddress().getHostAddress() : null;
+        IpGuard ipGuard = AuthMeBia.get().ipGuard();
         DialogActionCallback resendCb = (r, a) -> {
             if (!(a instanceof Player p)) return;
             int rem = (int) Math.max(0, cfg.emailResendCooldown() - (System.currentTimeMillis() - s.lastSent) / 1000);
@@ -93,12 +98,19 @@ public final class Email {
                                         if (!(a instanceof Player p)) return;
                                         String typed = r.getText("code");
                                         if (s.code.equals(typed == null ? null : typed.trim())) {
+                                            ipGuard.clearFailures(ip);
                                             EMAIL_SESSIONS.remove(uuid);
                                             authMe.pendingEmail.put(uuid, s.email);
                                             authMe.runAsync(() -> authMe.registerAndLogin(p, s.password));
-                                        } else {
-                                            showEmailVerifyIngame(p, cfg, lang, authMe, cfg.emailWrongCodeError());
+                                            return;
                                         }
+                                        ipGuard.recordFailure(ip, cfg, lang);
+                                        if (cfg.otpAttemptsEnabled() && s.wrongTries.incrementAndGet() >= cfg.otpMaxTries()) {
+                                            EMAIL_SESSIONS.remove(uuid);
+                                            p.kick(lang.disconnectTooManyAttempts(p.getName(), ip));
+                                            return;
+                                        }
+                                        showEmailVerifyIngame(p, cfg, lang, authMe, cfg.emailWrongCodeError());
                                     }),
                                     resendBtn(cfg, remaining, resendCb)),
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), (r, a) -> {

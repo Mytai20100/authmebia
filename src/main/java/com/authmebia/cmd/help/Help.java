@@ -20,6 +20,8 @@ public final class Help {
             sb.append(note("  Use 'show' with captcha/email to preview the dialog GUI"));
             sb.append(line("/bia notifier <toast> <player> show [seconds]", "Preview a custom toast notification (OP only)"));
             sb.append(line("/bia screen <id> [player]", "Show a custom screen to a player (OP only)"));
+            sb.append(line("/bia screen reset <player>", "Reset every screen's \"closed forever\" checkbox for a player (OP only)"));
+            sb.append(line("/bia screen reset <player> <id>", "Reset just one screen's \"closed forever\" checkbox for a player (OP only)"));
         }
         sb.append(line("/bia help", "Show this help", false));
 

@@ -3,32 +3,6 @@ package com.authmebia.listeners.floodgate;
 import java.lang.reflect.Method;
 import java.util.UUID;
 
-/**
- * Reflection bridge to the Floodgate API (Geyser's Bedrock bridge plugin),
- * following the same soft-dependency pattern as listeners.version.Version
- * for ViaVersion: no compile-time dependency, everything resolved via
- * reflection, and every failure degrades to "not available" instead of
- * throwing.
- *
- * SECURITY NOTE (read before changing anything here):
- * isFloodgatePlayer() only tells you the connecting UUID was assigned by
- * Floodgate's own Bedrock-XUID-derived UUID scheme, i.e. that the
- * connection came in through the Geyser/Floodgate proxy path. It is NOT
- * proof that the player currently owns a valid, re-verified Xbox Live
- * session -- Floodgate does not repeat Xbox authentication on every join,
- * it trusts the handshake performed once when the Bedrock client first
- * connected to Geyser. Treating "is a Floodgate player" as "is a verified
- * identity" would let anyone with a Bedrock client bypass authentication.
- *
- * getLinkedJavaUuid() is the actual trust anchor: it only returns a
- * non-null UUID if the player went through Floodgate's own account-linking
- * feature (manual /linkaccount or Floodgate's own auto-link config), which
- * associates the Bedrock XUID with a specific Java premium UUID via
- * Floodgate's own persistent link storage. This is the same kind of
- * pre-established, persisted mapping that isPremiumSkip() in AuthMe.java
- * relies on for Java premium UUIDs, so bedrock_autologin in AuthMe.java
- * only ever calls getLinkedJavaUuid(), never isFloodgatePlayer() alone.
- */
 public final class Floodgate {
 
     private static volatile boolean checked = false;
@@ -69,13 +43,6 @@ public final class Floodgate {
         }
     }
 
-    /**
-     * Returns the verified linked Java premium UUID for a Floodgate/Bedrock
-     * player, or null if Floodgate is unavailable, the player is not a
-     * Floodgate player, or the player has no linked account. A non-null
-     * result here is the only condition that should ever be treated as
-     * "this Bedrock player's identity is verified."
-     */
     public static UUID getLinkedJavaUuid(UUID bedrockUuid) {
         ensureLookup();
         if (api == null || getPlayerMethod == null || getLinkedPlayerMethod == null

@@ -5,15 +5,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 
-/**
- * Handles /bia notifier <toast_name> <player> <show> <seconds> -- a manual
- * test command for the notifications.toasts feature (config: notifications.
- * toasts), so admins can preview a configured toast's title/content/icon/
- * sound without needing to actually trigger the real event (first_register,
- * first_login, etc). This never touches ToastStore's persisted "already
- * shown" state, so testing a toast never affects whether it fires for real
- * later.
- */
 public final class Notifier {
 
     private Notifier() {}

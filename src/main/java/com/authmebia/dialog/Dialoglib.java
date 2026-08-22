@@ -33,18 +33,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @SuppressWarnings("UnstableApiUsage")
 public final class Dialoglib {
-
     public static final long DIALOG_AWAIT_SECONDS = 30L;
-
     private static final java.lang.reflect.Method CALLBACK_SAM = findCallbackSam();
-
-    /**
-     * Tracks, per player, a token for the in-game auth dialog currently on
-     * screen for them, plus the recovery task that watches for it being
-     * dismissed. See escapeGuard() for why this exists: there is no server
-     * event for "player pressed escape" on a Paper Dialog, so this is a
-     * polling workaround, not a real close listener.
-     */
     private static final Map<UUID, EscapeGuard> ESCAPE_GUARDS = new ConcurrentHashMap<>();
 
     private Dialoglib() {}
@@ -52,39 +42,10 @@ public final class Dialoglib {
     public static DialogBase buildBase(Component title, Component content, boolean escape, List<DialogInput> inputs) {
         return buildBase(title, content, escape, inputs, DialogAfterAction.CLOSE);
     }
-
-    /**
-     * Same as the 4-arg overload, but lets the caller pick what the client
-     * shows once a button is pressed and the server callback has not yet
-     * called back. Paper's default (DialogAfterAction.CLOSE) closes the
-     * dialog immediately on click, before the click callback has actually
-     * finished running server-side -- for callbacks that only flip local
-     * state this is invisible, but for anything that takes real work
-     * (password hashing, a DB lookup) the dialog closes and the button
-     * becomes clickable again in the moment before the result comes back,
-     * which is what lets a player spam-click Submit and fire the same
-     * check multiple times concurrently. Passing
-     * DialogAfterAction.WAIT_FOR_RESPONSE swaps the dialog for the client's
-     * built-in "waiting for response" screen for that window instead,
-     * which is Paper's own mechanism for this -- there is no way to
-     * manually disable/grey out a single ActionButton, so WAIT_FOR_RESPONSE
-     * is the only available way to keep the player from re-submitting
-     * while a previous submission from the same dialog is still being
-     * processed. It has no effect once the callback re-renders a fresh
-     * dialog (the loop in the blocking dialogs, or the recursive re-render
-     * in the in-game ones already replace the dialog outright).
-     */
     public static DialogBase buildBase(Component title, Component content, boolean escape,
                                         List<DialogInput> inputs, DialogAfterAction afterAction) {
         return buildBase(title, content, escape, inputs, afterAction, null);
     }
-
-    /**
-     * Same as the 5-arg overload, but lets the caller prepend an extra
-     * DialogBody entry (e.g. an ItemDialogBody built from a custom_icons
-     * "item" entry, see IconSpec) before the plain-text content body.
-     * Passing null behaves exactly like the 5-arg overload.
-     */
     public static DialogBase buildBase(Component title, Component content, boolean escape,
                                         List<DialogInput> inputs, DialogAfterAction afterAction,
                                         DialogBody leadingBody) {
@@ -161,40 +122,6 @@ public final class Dialoglib {
             Thread.currentThread().interrupt();
         }
     }
-
-    /**
-     * Arms (or re-arms) the re-open safeguard documented by
-     * dialog.allow_close in config.yml: "If false, re-opens the auth
-     * dialog immediately when the player dismisses it". That behavior was
-     * only ever described in the config comment, never implemented -- the
-     * canCloseWithEscape(false) passed to buildBase only tells the client
-     * it is not allowed to dismiss the dialog with the escape key itself;
-     * it does not do anything if the player closes the dialog some other
-     * way (e.g. opening their own inventory, or a client mod), and Paper's
-     * Dialog API has no server-side event at all for "the player closed
-     * this dialog" (only PlayerCustomClickEvent for button presses -- see
-     * Paper's dialog API docs). So there is no way to be notified the
-     * instant a dialog is dismissed without a button being pressed.
-     *
-     * What this does instead: it schedules a repeating check, tied to a
-     * per-player token, that re-shows reopen after checkDelayTicks if
-     * isStillPending still returns true by then. Every fresh call to
-     * showLoginIngame/showRegisterIngame/etc. calls this again with a new
-     * token, which invalidates any check scheduled by the previous dialog
-     * -- so a normal wrong-password retry (which already re-renders the
-     * dialog itself) does not also trigger a duplicate reopen from here.
-     * If the player is still mid-dialog (didn't close it) when the check
-     * runs, isStillPending is expected to return false because the
-     * plugin's own state already moved on (e.g. a pending numeric-input
-     * StringBuilder session, or simply because a new dialog/guard replaced
-     * this one), so this only fires the false-positive path when the
-     * dialog really was dismissed without any button click.
-     *
-     * Only meaningful when escape is true (dialog.allow_close: true); when
-     * escape is false the client already refuses the escape key, so the
-     * only remaining way to lose the dialog is leaving the game entirely,
-     * which PlayerQuitEvent already covers elsewhere.
-     */
     public static void escapeGuard(Player player, boolean escape, long checkDelayTicks,
                                     java.util.function.BooleanSupplier isStillPending, Runnable reopen) {
         UUID uuid = player.getUniqueId();
@@ -220,12 +147,6 @@ public final class Dialoglib {
             org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, check, Math.max(1L, checkDelayTicks));
         }
     }
-
-    /**
-     * Disarms any pending escapeGuard check for this player, e.g. once they
-     * successfully authenticate or disconnect, so a stale check does not
-     * reopen a dialog for a player who no longer needs one.
-     */
     public static void clearEscapeGuard(UUID uuid) {
         ESCAPE_GUARDS.remove(uuid);
     }
@@ -286,16 +207,6 @@ public final class Dialoglib {
         } catch (IllegalAccessException ignored) {}
     }
 
-    /**
-     * Public entry point for invokeCallback(), for callers outside this
-     * package that need to compose/wrap another DialogActionCallback
-     * (e.g. CustomScreen's dismissAwareCallback, which needs to run an
-     * inner button callback after first handling this screen's checkbox).
-     * Kept as a thin public wrapper around the private, reflection-based
-     * invokeCallback() rather than making that method itself public, so
-     * the SAM-invocation workaround stays an internal implementation
-     * detail of this class.
-     */
     public static void runCallback(DialogActionCallback cb, DialogResponseView r, Audience a) {
         invokeCallback(cb, r, a);
     }

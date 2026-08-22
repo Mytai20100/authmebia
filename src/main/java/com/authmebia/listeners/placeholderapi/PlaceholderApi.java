@@ -4,18 +4,6 @@ import org.bukkit.OfflinePlayer;
 
 import java.lang.reflect.Method;
 
-/**
- * Reflection bridge to PlaceholderAPI, following the same soft-dependency
- * pattern as listeners.version.Version (ViaVersion) and
- * listeners.floodgate.Floodgate: no compile-time dependency, everything
- * resolved via reflection, and every failure degrades to "return the text
- * unchanged" instead of throwing.
- *
- * Used to let config.yml text fields (titles, content, button labels, chat
- * messages) use %placeholder% syntax from any installed PlaceholderAPI
- * expansion (LuckPerms prefixes, Vault ranks, etc), in addition to the
- * plugin's own {player} substitution and MiniMessage formatting.
- */
 public final class PlaceholderApi {
 
     private static volatile boolean checked = false;
@@ -35,12 +23,6 @@ public final class PlaceholderApi {
         return setPlaceholdersMethod != null;
     }
 
-    /**
-     * Replaces %placeholder% patterns in text using PlaceholderAPI, if it is
-     * installed. Returns the text unchanged if PlaceholderAPI is missing,
-     * player is null, text is null/blank, or resolution fails for any
-     * reason -- this never throws and never blocks on a missing plugin.
-     */
     public static String apply(OfflinePlayer player, String text) {
         if (text == null || text.isEmpty() || player == null) return text;
         ensureLookup();

@@ -2,6 +2,7 @@ package com.authmebia;
 
 import com.authmebia.cfg.Cfg;
 import com.authmebia.cmd.Cmd;
+import com.authmebia.data.PlayerDataStore;
 import com.authmebia.lang.Lang;
 import com.authmebia.listeners.bialist.BiaList;
 import com.authmebia.listeners.captcha.Captcha;
@@ -25,6 +26,7 @@ public final class AuthMeBia extends JavaPlugin {
     private Captcha captcha;
     private IpGuard ipGuard;
     private Lang lang;
+    private PlayerDataStore playerDataStore;
     private BiaList biaList;
     private RecoverStore recoverStore;
     private ScreenDismissStore screenDismissStore;
@@ -49,9 +51,10 @@ public final class AuthMeBia extends JavaPlugin {
         lang = new Lang(this);
         captcha = new Captcha();
         ipGuard = new IpGuard();
-        biaList = new BiaList(this);
-        recoverStore = new RecoverStore(this);
-        screenDismissStore = new ScreenDismissStore(this);
+        playerDataStore = new PlayerDataStore(this);
+        biaList = new BiaList(this, playerDataStore);
+        recoverStore = new RecoverStore(this, playerDataStore);
+        screenDismissStore = new ScreenDismissStore(this, playerDataStore);
 
         httpClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
@@ -96,17 +99,6 @@ public final class AuthMeBia extends JavaPlugin {
         getLogger().info("AuthMeBia enabled on " + platformName() + ".");
     }
 
-    /**
-     * PIN/slider produce a numeric string exactly auth_mode.pin.length or
-     * auth_mode.slider.length digits long, which is sent to AuthMe as the
-     * account password. If that is shorter than AuthMe's own
-     * settings.security.minPasswordLength, AuthMe rejects the
-     * register/login with a "password too short" error, which is
-     * confusing when the player never typed a password at all. This does
-     * not change auth_mode.pin.length/slider.length automatically -- it
-     * only warns, since silently lengthening a configured PIN/slider size
-     * could surprise an admin who set it intentionally.
-     */
     private void warnIfPinSliderTooShort() {
         if (cfg().authMode() != com.authmebia.dialog.Mode.PIN
                 && cfg().authMode() != com.authmebia.dialog.Mode.SLIDER
@@ -157,7 +149,7 @@ public final class AuthMeBia extends JavaPlugin {
 
     private void warnIfBedrockGeyserModeUnsafe() {
         if (!cfg().bedrockAutologinEnabled()) return;
-        if (cfg().bedrockAutoLoginMode() != com.authmebia.cfg.BedrockAutoLoginMode.GEYSER) return;
+        if (cfg().bedrockAutoLoginMode() != com.authmebia.cfg.BedrockCfg.AutoLoginMode.GEYSER) return;
 
         getLogger().warning("auto.bedrock_mode is set to 'geyser'. This trusts ANY Bedrock/Geyser "
                 + "connection with NO account-linking verification -- it is only safe if Geyser's own "
@@ -245,6 +237,10 @@ public final class AuthMeBia extends JavaPlugin {
         return screenDismissStore;
     }
 
+    public PlayerDataStore playerDataStore() {
+        return playerDataStore;
+    }
+
     public OkHttpClient httpClient() {
         return httpClient;
     }
@@ -269,14 +265,6 @@ public final class AuthMeBia extends JavaPlugin {
         }
 
         String base = foliaServer ? "Folia" : "Paper";
-
-        // serverName is the fork's own self-reported name (e.g. "Purpur",
-        // "Leaf", "Pufferfish", "Canvas"). Every Paper-API fork sets this to
-        // its own branding rather than leaving it as "Paper"/"Folia", so if
-        // it doesn't match the base platform name, show both: the fork name
-        // plus which base it's built on, e.g. "Purpur (Paper)" or
-        // "Purpur-based-Folia-fork (Folia)". Running directly on stock
-        // Paper or Folia just shows "Paper" / "Folia" as before.
         if (serverName != null && !serverName.isBlank()
                 && !serverName.equalsIgnoreCase(base)
                 && !serverName.equalsIgnoreCase("CraftBukkit")) {
@@ -310,7 +298,6 @@ public final class AuthMeBia extends JavaPlugin {
     public AuthMe authMeListener() {
         return authMeListener;
     }
-
     public com.authmebia.notifications.ToastListener toastListener() {
         return toastListener;
     }

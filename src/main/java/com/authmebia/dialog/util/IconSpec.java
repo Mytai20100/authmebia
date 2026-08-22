@@ -10,36 +10,6 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.Map;
 
-/**
- * Parses a "custom_icons.<name>" config section describing an inline icon
- * (a sprite from an atlas, a player head, or a raw item/material) and turns
- * it into either a Component prefix -- for title/label text, via
- * Component.object() -- or an ItemDialogBody -- for dialog content, via
- * DialogBody.item().
- *
- * Config shape (all fields optional except "type"):
- *
- * custom_icons:
- *   bedrock:
- *     type: sprite            # sprite | player_head | item
- *     atlas: items             # sprite only, default "items"
- *     sprite: item/bedrock      # sprite only
- *   my_head:
- *     type: player_head         # player_head only, name or {player}
- *     player: "{player}"
- *   red_bed:
- *     type: item                 # item only
- *     material: RED_BED
- *     show_decorations: false    # item only, default true
- *     show_tooltip: false        # item only, default true
- *     width: 16                  # item only, default 16
- *     height: 16                 # item only, default 16
- *
- * Unknown/missing/invalid config is treated as "no icon" everywhere -- an
- * icon is a purely cosmetic addition, so any parsing problem here should
- * silently fall back to the plain text/dialog the caller already builds,
- * never break the dialog itself.
- */
 public final class IconSpec {
 
     public enum Type { SPRITE, PLAYER_HEAD, ITEM }
@@ -68,11 +38,6 @@ public final class IconSpec {
         this.height = height;
     }
 
-    /**
-     * Parses a single icon definition map (one value under "custom_icons:").
-     * Returns null if the map is null/empty or the type/required fields are
-     * missing or invalid -- see class javadoc for why this never throws.
-     */
     public static IconSpec parse(Map<?, ?> map) {
         if (map == null || map.isEmpty()) return null;
         String typeStr = str(map, "type", "");
@@ -113,13 +78,6 @@ public final class IconSpec {
         }
     }
 
-    /**
-     * Builds a Component suitable for prepending to a title or button
-     * label (SPRITE and PLAYER_HEAD only). Returns null for ITEM-type
-     * specs, since an item cannot be inlined into text -- use
-     * toItemBody() instead for those, typically in a dialog's content
-     * area.
-     */
     public Component toInlineComponent(String playerName) {
         return switch (type) {
             case SPRITE -> Component.object(ObjectContents.sprite(atlas, sprite));
@@ -133,11 +91,6 @@ public final class IconSpec {
         };
     }
 
-    /**
-     * Builds a dialog body entry for this icon (ITEM type only). Returns
-     * null for SPRITE/PLAYER_HEAD specs -- use toInlineComponent() for
-     * those instead, typically prepended to a title/label Component.
-     */
     public DialogBody toItemBody() {
         if (type != Type.ITEM) return null;
         ItemStack stack = new ItemStack(material);
