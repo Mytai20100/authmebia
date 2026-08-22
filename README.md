@@ -3,7 +3,7 @@
 
 # authmebia
 
-A addon for AuthMe Reloaded that replaces dialog-based login and register prompts with dialog customizable.
+A addon for AuthMe Reloaded that replaces dialog-based login and register prompts of authme reloaded with dialog customizable.
 
 [GitHub](https://github.com/Mytai20100/authmebia)
 </div>
