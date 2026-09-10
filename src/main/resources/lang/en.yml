@@ -8,6 +8,7 @@ disconnect:
   registration_cancelled: "<red>Registration cancelled."
   must_agree_rules: "<red>You must agree to the rules."
   login_failed: "<red>Login failed."
+  already_connecting: "<red>A connection with this name is already in progress. Please try again shortly."
   logout: "<gray>You have been disconnected."
   too_many_attempts: "<red>Too many failed login attempts."
   ip_banned: "<red>Your IP (<yellow>{player_ip}</yellow>) has been temporarily banned due to too many failed login attempts."

@@ -8,6 +8,7 @@ disconnect:
   registration_cancelled: "<red>Đăng ký đã bị hủy."
   must_agree_rules: "<red>Bạn phải đồng ý với nội quy máy chủ."
   login_failed: "<red>Đăng nhập thất bại."
+  already_connecting: "<red>Đã có một kết nối khác đang đăng nhập với tên này. Vui lòng thử lại sau."
   logout: "<gray>Bạn đã ngắt kết nối khỏi máy chủ."
   too_many_attempts: "<red>Quá nhiều lần nhập sai mật khẩu."
   ip_banned: "<red>IP của bạn (<yellow>{player_ip}</yellow>) đã bị cấm tạm thời do nhập sai mật khẩu quá nhiều lần."

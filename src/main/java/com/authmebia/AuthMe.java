@@ -14,6 +14,7 @@ import com.authmebia.lang.Lang;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.listeners.version.Version;
 import com.authmebia.listeners.ipguard.IpGuard;
+import com.authmebia.service.NameClaimRegistry;
 import fr.xephi.authme.events.FailedLoginEvent;
 import fr.xephi.authme.events.LoginEvent;
 import fr.xephi.authme.events.RegisterEvent;
@@ -78,6 +79,11 @@ public class AuthMe implements Listener {
     final Map<UUID, Boolean> pendingAutoLogin = new ConcurrentHashMap<>();
     private final Map<UUID, CompletableFuture<Boolean>> pendingLoginFutures = new ConcurrentHashMap<>();
     private final Map<UUID, CompletableFuture<Boolean>> pendingRegisterFutures = new ConcurrentHashMap<>();
+    // Prevents two connections joining under the same name from racing through the
+    // pre-join dialog concurrently. On offline-mode servers the player UUID is derived
+    // solely from the name, so without this a second connection could read/overwrite
+    // the first connection's pendingRegister/pendingForceLogin state mid-dialog.
+    private final NameClaimRegistry nameClaimRegistry = new NameClaimRegistry();
 
     public AuthMe(AuthMeBia plugin) {
         this.plugin = plugin;
@@ -250,93 +256,109 @@ public class AuthMe implements Listener {
         UUID uuid = connection.getProfile().getId();
         if (name == null || uuid == null) return;
 
-        if (plugin.biaList().isBypassed(uuid)) {
+        // Claim this name for the duration of the pre-join dialog so a second connection
+        // joining under the same name (offline-mode UUIDs are name-derived, so it would
+        // collide on the exact same UUID key used below) can't read or overwrite this
+        // connection's pendingRegister/pendingForceLogin/pendingAutoLogin state.
+        if (!nameClaimRegistry.tryClaim(name, connection, TimeUnit.MINUTES.toMillis(5))) {
+            connection.disconnect(plugin.lang().disconnectAlreadyConnecting(IpGuard.resolveIp(connection)));
             return;
         }
 
-        if (isPremiumSkip(uuid, name)) {
-            return;
-        }
-
-        if (plugin.cfg().sessionAutologinEnabled()
-                && isSessionEligibleByLastLogin(name, IpGuard.resolveIp(connection))) {
-            return;
-        }
-
-        UUID autoLoginJavaUuid = resolveAutoLoginJavaUuid(uuid, name);
-        if (autoLoginJavaUuid != null) {
-            pendingAutoLogin.put(uuid, true);
-            return;
-        }
-
-        Cfg cfg = resolveEffectiveCfg(uuid);
-        Lang lang = plugin.lang();
-
-        if (!Version.supportsDialogs(uuid, null, cfg.dialogMinProtocolVersion())) {
-            return;
-        }
-
-        String ip = IpGuard.resolveIp(connection);
-
-        java.util.concurrent.atomic.AtomicBoolean authed = new java.util.concurrent.atomic.AtomicBoolean(false);
-        if (cfg.loginTimeoutEnabled() && cfg.loginTimeoutSeconds() > 0) {
-            scheduleDisconnect(connection, authed, cfg.loginTimeoutKickMessage(), cfg.loginTimeoutSeconds());
-        }
-
-        if (captchaRequired(cfg, uuid)) {
-            boolean verified = Captcha.showCaptchaBlocking(connection, cfg, lang, plugin.captcha());
-            if (!verified) {
-                connection.disconnect(lang.disconnectVerificationFailed(ip));
+        try {
+            if (plugin.biaList().isBypassed(uuid)) {
                 return;
             }
-            plugin.captcha().markTrusted(uuid, cfg.captchaTrustDurationSeconds());
-        }
 
-        boolean registered = isRegisteredByName(name);
-
-        if (registered && plugin.recoverStore().isFlagged(uuid)) {
-            String newPass = Recover.showRecoverBlocking(connection, cfg);
-            if (newPass == null) {
-                connection.disconnect(lang.disconnectLoginFailed(ip));
+            if (isPremiumSkip(uuid, name)) {
                 return;
             }
-            changePassword(name, newPass);
-            plugin.recoverStore().clear(uuid);
-            showPrejoinScreensBlocking(connection, name);
-            pendingForceLogin.put(uuid, true);
-            authed.set(true);
-            return;
-        }
 
-        if (!registered) {
-            String password = Register.showRegisterBlocking(connection, cfg, lang);
-            if (password == null) {
-                connection.disconnect(lang.disconnectRegistrationCancelled(ip));
+            if (plugin.cfg().sessionAutologinEnabled()
+                    && isSessionEligibleByLastLogin(name, IpGuard.resolveIp(connection))) {
                 return;
             }
-            pendingRegister.put(uuid, password);
 
-            if (cfg.ruleEnabled()) {
-                boolean agreed = Rule.showRuleBlocking(connection, cfg);
-                if (!agreed) {
-                    connection.disconnect(lang.disconnectMustAgreeRules(ip));
-                    pendingRegister.remove(uuid);
+            UUID autoLoginJavaUuid = resolveAutoLoginJavaUuid(uuid, name);
+            if (autoLoginJavaUuid != null) {
+                pendingAutoLogin.put(uuid, true);
+                return;
+            }
+
+            Cfg cfg = resolveEffectiveCfg(uuid);
+            Lang lang = plugin.lang();
+
+            if (!Version.supportsDialogs(uuid, null, cfg.dialogMinProtocolVersion())) {
+                return;
+            }
+
+            String ip = IpGuard.resolveIp(connection);
+
+            java.util.concurrent.atomic.AtomicBoolean authed = new java.util.concurrent.atomic.AtomicBoolean(false);
+            if (cfg.loginTimeoutEnabled() && cfg.loginTimeoutSeconds() > 0) {
+                scheduleDisconnect(connection, authed, cfg.loginTimeoutKickMessage(), cfg.loginTimeoutSeconds());
+            }
+
+            if (captchaRequired(cfg, uuid)) {
+                boolean verified = Captcha.showCaptchaBlocking(connection, cfg, lang, plugin.captcha());
+                if (!verified) {
+                    connection.disconnect(lang.disconnectVerificationFailed(ip));
                     return;
                 }
+                plugin.captcha().markTrusted(uuid, cfg.captchaTrustDurationSeconds());
             }
 
-            showPrejoinScreensBlocking(connection, name);
-            pendingForceLogin.put(uuid, true);
-            authed.set(true);
-        } else {
-            boolean ok = Login.showLoginBlocking(connection, name, cfg, lang, this, plugin.ipGuard(), ip);
-            if (!ok) {
-                connection.disconnect(lang.disconnectLoginFailed(ip));
-            } else {
+            boolean registered = isRegisteredByName(name);
+
+            if (registered && plugin.recoverStore().isFlagged(uuid)) {
+                String newPass = Recover.showRecoverBlocking(connection, cfg);
+                if (newPass == null) {
+                    connection.disconnect(lang.disconnectLoginFailed(ip));
+                    return;
+                }
+                changePassword(name, newPass);
+                plugin.recoverStore().clear(uuid);
                 showPrejoinScreensBlocking(connection, name);
                 pendingForceLogin.put(uuid, true);
                 authed.set(true);
+                return;
             }
+
+            if (!registered) {
+                String password = Register.showRegisterBlocking(connection, cfg, lang);
+                if (password == null) {
+                    connection.disconnect(lang.disconnectRegistrationCancelled(ip));
+                    return;
+                }
+                pendingRegister.put(uuid, password);
+
+                if (cfg.ruleEnabled()) {
+                    boolean agreed = Rule.showRuleBlocking(connection, cfg);
+                    if (!agreed) {
+                        connection.disconnect(lang.disconnectMustAgreeRules(ip));
+                        pendingRegister.remove(uuid);
+                        return;
+                    }
+                }
+
+                showPrejoinScreensBlocking(connection, name);
+                pendingForceLogin.put(uuid, true);
+                authed.set(true);
+            } else {
+                boolean ok = Login.showLoginBlocking(connection, name, cfg, lang, this, plugin.ipGuard(), ip);
+                if (!ok) {
+                    connection.disconnect(lang.disconnectLoginFailed(ip));
+                } else {
+                    showPrejoinScreensBlocking(connection, name);
+                    pendingForceLogin.put(uuid, true);
+                    authed.set(true);
+                }
+            }
+        } finally {
+            // Release unconditionally: onConfigure only returns after either disconnecting
+            // the connection or handing off to onJoin (which fires on the same, still-live
+            // connection), so nothing else could have taken over this name's claim yet.
+            nameClaimRegistry.releaseForce(name);
         }
     }
 

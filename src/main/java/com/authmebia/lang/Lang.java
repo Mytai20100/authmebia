@@ -59,6 +59,10 @@ public final class Lang {
         return parse("disconnect.login_failed", null, ip);
     }
 
+    public Component disconnectAlreadyConnecting(String ip) {
+        return parse("disconnect.already_connecting", null, ip);
+    }
+
     public Component disconnectLogout(String player, String ip) {
         return parse("disconnect.logout", player, ip);
     }
