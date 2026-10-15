@@ -2,6 +2,7 @@ package com.authmebia.dialog.captcha;
 
 import com.authmebia.cfg.Cfg;
 import com.authmebia.lang.Lang;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -35,7 +36,7 @@ public final class Captcha {
         AtomicReference<String> code = new AtomicReference<>(captcha.generate(cfg.captchaLength()));
         AtomicReference<String> error = new AtomicReference<>(null);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean verified = new AtomicBoolean(false);
 

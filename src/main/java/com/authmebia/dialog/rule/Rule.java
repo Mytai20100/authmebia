@@ -1,6 +1,7 @@
 package com.authmebia.dialog.rule;
 
 import com.authmebia.cfg.Cfg;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -27,7 +28,7 @@ public final class Rule {
 
     private static boolean showRuleBlockingInner(PlayerConfigurationConnection conn, Cfg cfg, String playerName) {
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean agreed = new AtomicBoolean(false);
 

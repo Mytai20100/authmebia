@@ -14,6 +14,7 @@ import com.authmebia.lang.Lang;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.listeners.version.Version;
 import com.authmebia.listeners.ipguard.IpGuard;
+import com.authmebia.service.ConnectionState;
 import com.authmebia.service.NameClaimRegistry;
 import fr.xephi.authme.events.FailedLoginEvent;
 import fr.xephi.authme.events.LoginEvent;
@@ -369,7 +370,7 @@ public class AuthMe implements Listener {
                 if (!screen.enabled()) continue;
                 if (screen.trigger() != com.authmebia.dialog.customscreen.CustomScreen.Trigger.PREJOIN) continue;
                 if (CustomScreen.isAutoDismissedFor(screen, uuid)) continue;
-                if (!conn.isConnected()) break;
+                if (!ConnectionState.isConnected(conn)) break;
                 CustomScreen.showCustomScreenBlocking(conn, screen, playerName);
             }
         });
@@ -556,7 +557,7 @@ public class AuthMe implements Listener {
                                     java.util.concurrent.atomic.AtomicBoolean authed,
                                     net.kyori.adventure.text.Component message, int seconds) {
         Runnable task = () -> {
-            if (!authed.get() && conn.isConnected()) conn.disconnect(message);
+            if (!authed.get() && ConnectionState.isConnected(conn)) conn.disconnect(message);
         };
         if (plugin.isFolia()) {
             plugin.getServer().getAsyncScheduler().runDelayed(plugin, t -> task.run(), seconds, TimeUnit.SECONDS);

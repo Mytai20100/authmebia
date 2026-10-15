@@ -8,6 +8,7 @@ import com.authmebia.dialog.recover.Recover;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.lang.Lang;
 import com.authmebia.listeners.ipguard.IpGuard;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -64,7 +65,7 @@ public final class Forgot {
     }
 
     private static boolean forgotPasswordNoEmailBlocking(PlayerConfigurationConnection conn, Cfg cfg, Lang lang, String name) {
-        if (!conn.isConnected()) return false;
+        if (!ConnectionState.isConnected(conn)) return false;
         CountDownLatch latch = new CountDownLatch(1);
         AtomicBoolean disconnect = new AtomicBoolean(false);
 
@@ -86,7 +87,7 @@ public final class Forgot {
     private static String forgotPasswordEmailBlocking(PlayerConfigurationConnection conn, Cfg cfg, Lang lang, String name, String storedEmail) {
         AtomicReference<String> error = new AtomicReference<>(null);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<String> matched = new AtomicReference<>(null);
             AtomicBoolean disconnect = new AtomicBoolean(false);
@@ -139,7 +140,7 @@ public final class Forgot {
         AtomicReference<String> error = new AtomicReference<>(null);
         AtomicInteger wrongTries = new AtomicInteger(0);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean verified = new AtomicBoolean(false);
             AtomicBoolean logout = new AtomicBoolean(false);

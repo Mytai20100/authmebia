@@ -4,6 +4,7 @@ import com.authmebia.AuthMeBia;
 import com.authmebia.cfg.Cfg;
 import com.authmebia.dialog.Dialoglib;
 import com.authmebia.dialog.util.IconSpec;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -120,7 +121,7 @@ public record CustomScreen(
             PlayerConfigurationConnection conn,
             com.authmebia.dialog.customscreen.CustomScreen screen, String playerName) {
         if (!screen.enabled()) return;
-        if (!conn.isConnected()) return;
+        if (!ConnectionState.isConnected(conn)) return;
         UUID uuid = conn.getProfile().getId();
         try {
             CountDownLatch latch = new CountDownLatch(1);

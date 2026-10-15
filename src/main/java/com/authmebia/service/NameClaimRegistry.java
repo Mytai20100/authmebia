@@ -83,7 +83,7 @@ public final class NameClaimRegistry {
         }
 
         boolean isStale() {
-            return !connection.isConnected() || System.currentTimeMillis() > expiresAt;
+            return !ConnectionState.isConnected(connection) || System.currentTimeMillis() > expiresAt;
         }
     }
 }

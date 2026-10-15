@@ -6,6 +6,7 @@ import com.authmebia.cfg.Cfg;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.lang.Lang;
 import com.authmebia.listeners.ipguard.IpGuard;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -38,7 +39,7 @@ public final class TwoFactor {
         AtomicReference<String> error = new AtomicReference<>(null);
         AtomicInteger wrongTries = new AtomicInteger(0);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean success = new AtomicBoolean(false);
             AtomicBoolean disconnect = new AtomicBoolean(false);

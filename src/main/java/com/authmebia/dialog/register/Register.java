@@ -9,6 +9,7 @@ import com.authmebia.dialog.email.Email;
 import com.authmebia.dialog.shared.AuthInput;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.lang.Lang;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -51,7 +52,7 @@ public final class Register {
         String playerName = conn.getProfile().getName();
         java.util.UUID uuid = conn.getProfile().getId();
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<String> result = new AtomicReference<>(null);
             AtomicReference<String> emailRef = new AtomicReference<>(null);
@@ -135,7 +136,7 @@ public final class Register {
         long[] lastSent = { System.currentTimeMillis() };
         AtomicReference<String> error = new AtomicReference<>(null);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean verified = new AtomicBoolean(false);
             AtomicBoolean logout = new AtomicBoolean(false);

@@ -2,6 +2,7 @@ package com.authmebia.dialog.shared;
 
 import com.authmebia.cfg.Cfg;
 import com.authmebia.dialog.Dialoglib;
+import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -47,7 +48,7 @@ public final class AuthInput {
         AtomicReference<String> result = new AtomicReference<>(null);
         AtomicBoolean logout = new AtomicBoolean(false);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             conn.getAudience().showDialog(buildPinDialog(cfg, length, sb, statusLine,
                     digit -> { if (sb.length() < length) sb.append(digit); latch.countDown(); },
@@ -70,7 +71,7 @@ public final class AuthInput {
         AtomicReference<String> result = new AtomicReference<>(null);
         AtomicBoolean logout = new AtomicBoolean(false);
 
-        while (conn.isConnected()) {
+        while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
             conn.getAudience().showDialog(buildSliderDialog(cfg, length, digits, statusLine,
                     pos -> { digits[pos] = (digits[pos] + 1) % 10; latch.countDown(); },
