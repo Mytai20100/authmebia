@@ -95,7 +95,7 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 | Paper            | ✔        |                                                         |
 | Folia            | ✔        |                                                         |
 | Java             | 21-25    |                                                         |
-| AuthMe Reloaded  | 6.0.0+   | Can load full features of authmebia                     |
+| AuthMe Reloaded  | 6.0.1+   | Can load full features of authmebia                     |
 | ViaVersion       | Optional | Detect old-client , fallback to command login /register | 
 
 **Optional, only needed for specific features:**
