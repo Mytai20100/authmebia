@@ -23,6 +23,25 @@ lang: en
 # plugins/AuthMeBia/data/<uuid>/data.yml, and managed entirely through
 # those two commands. See doc/README.md for the full file format.
 
+# Anonymous usage statistics via bStats. This takes effect on the next server
+# start, not on /bia reload. A server-wide opt-out in plugins/bStats/config.yml
+# also applies.
+bstats: true
+
+# Check Modrinth for a newer AuthMeBia release at startup and when a player
+# with authmebia.update (OP by default) joins. Outdated consoles get a warning;
+# those players get a clickable chat message. Enabling this after startup
+# requires a restart; disabling it takes effect on /bia reload.
+update_checker: true
+
+# Settings for /bia look <ip>. {ip} in ipinfo_url is replaced with the queried
+# address. If ipinfo_token is set, it is sent as the "token" query parameter.
+# The default is IPinfo's free JSON endpoint, so /bia look works without extra
+# configuration. A paid endpoint can be configured for more fields.
+look:
+  ipinfo_url: "https://ipinfo.io/{ip}/json"
+  ipinfo_token: ""
+
 # Automatic authentication skip for already-verified identities.
 # Both flags default to false. With both false, behavior is identical to not
 # having this section at all.
@@ -661,6 +680,42 @@ custom_icons:
     type: sprite
     atlas: items
     sprite: item/trial_key
+  settings_general:
+    type: sprite
+    atlas: items
+    sprite: item/comparator
+  settings_auto:
+    type: sprite
+    atlas: items
+    sprite: item/clock
+  settings_security:
+    type: sprite
+    atlas: items
+    sprite: item/iron_door
+  settings_appearance:
+    type: sprite
+    atlas: items
+    sprite: item/painting
+  settings_auth:
+    type: sprite
+    atlas: items
+    sprite: item/name_tag
+  config_section:
+    type: sprite
+    atlas: items
+    sprite: item/writable_book
+  ui_save:
+    type: sprite
+    atlas: items
+    sprite: item/lime_dye
+  ui_back:
+    type: sprite
+    atlas: items
+    sprite: item/arrow
+  ui_exit:
+    type: sprite
+    atlas: items
+    sprite: item/barrier
   # bedrock:
   #   type: sprite
   #   atlas: items
@@ -691,8 +746,13 @@ custom_icons:
 #   button_width    - default button width in pixels for this screen (default: dialog.button_width)
 #   trigger         - when this screen is automatically shown:
 #                       command  (default) - only via /bia screen
-#                       postjoin           - shown after the player authenticates and spawns in-game
+#                       postjoin           - queued after the player authenticates and spawns in-game
 #                       prejoin            - shown during the pre-spawn phase (blocking), after auth
+#                     Screens with the same trigger run in config order, from top to
+#                     bottom. The next screen starts after a close/command/console
+#                     button is clicked; open_url/copy and ESC do not advance the queue.
+#                     A fallback OK button is added when a screen has no
+#                     close/command/console button.
 #   sound_on_show   - Minecraft sound played when the screen opens (in-game only).
 #                     Format: "namespace:sound.name" or "namespace:sound.name volume pitch"
 #                     Example: "minecraft:ui.button.click 1.0 1.0"
@@ -844,4 +904,4 @@ ip_ban:
   # The last value is reused for any further offense beyond the list.
   ban_durations_seconds: [600, 1800, 3600, 86400]
 
-config_version: 2
+config_version: 3

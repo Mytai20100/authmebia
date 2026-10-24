@@ -3,12 +3,14 @@ package com.authmebia.lang;
 import com.authmebia.AuthMeBia;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 public final class Lang {
 
@@ -16,6 +18,7 @@ public final class Lang {
 
     private final AuthMeBia plugin;
     private YamlConfiguration data;
+    private YamlConfiguration embedded;
 
     public Lang(AuthMeBia plugin) {
         this.plugin = plugin;
@@ -23,6 +26,7 @@ public final class Lang {
     }
 
     public void reload() {
+        embedded = loadBuiltin("lang/en.yml");
         String code = plugin.cfg().lang();
         File file = new File(plugin.getDataFolder(), "lang/" + code + ".yml");
         if (!file.exists()) {
@@ -31,10 +35,56 @@ public final class Lang {
         }
         if (file.exists()) {
             data = YamlConfiguration.loadConfiguration(file);
+        } else if (embedded != null) {
+            data = embedded;
+            plugin.getLogger().warning("Built-in lang/en.yml also missing from disk; using embedded fallback.");
         } else {
-            data = loadBuiltin("lang/en.yml");
+            data = new YamlConfiguration();
             plugin.getLogger().warning("Built-in lang/en.yml also missing from disk; using embedded fallback.");
         }
+    }
+
+    public Component component(String key, String fallback, Map<String, String> values) {
+        String raw = resolve(key, fallback);
+        String substituted = substitute(raw, values);
+        try {
+            return MM.deserialize(substituted);
+        } catch (Throwable t) {
+            return Component.text(substituted);
+        }
+    }
+
+    public String plain(String key, String fallback, Map<String, String> values) {
+        String raw = resolve(key, fallback);
+        String substituted = substitute(raw, values);
+        try {
+            return PlainTextComponentSerializer.plainText().serialize(MM.deserialize(substituted));
+        } catch (Throwable t) {
+            return substituted;
+        }
+    }
+
+    private String resolve(String key, String fallback) {
+        String value = data != null ? data.getString(key) : null;
+        if (value == null && embedded != null) {
+            value = embedded.getString(key);
+        }
+        if (value == null) {
+            value = fallback;
+        }
+        return value == null ? "" : value;
+    }
+
+    private String substitute(String raw, Map<String, String> values) {
+        if (values == null || values.isEmpty()) return raw;
+        String result = raw;
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            if (entry.getKey() == null) continue;
+            String value = entry.getValue() == null ? "" : entry.getValue();
+            String safe = MM.escapeTags(value);
+            result = result.replace("{" + entry.getKey() + "}", safe);
+        }
+        return result;
     }
 
     private YamlConfiguration loadBuiltin(String resource) {

@@ -31,6 +31,8 @@ import org.bukkit.potion.PotionEffectType;
 
 import java.io.File;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -366,10 +368,7 @@ public class AuthMe implements Listener {
     private void showPrejoinScreensBlocking(PlayerConfigurationConnection conn, String playerName) {
         UUID uuid = conn.getProfile().getId();
         Cfg.withPlayerContext(playerName, () -> {
-            for (CustomScreen screen : plugin.cfg().customScreens()) {
-                if (!screen.enabled()) continue;
-                if (screen.trigger() != com.authmebia.dialog.customscreen.CustomScreen.Trigger.PREJOIN) continue;
-                if (CustomScreen.isAutoDismissedFor(screen, uuid)) continue;
+            for (CustomScreen screen : customScreensFor(CustomScreen.Trigger.PREJOIN, uuid)) {
                 if (!ConnectionState.isConnected(conn)) break;
                 CustomScreen.showCustomScreenBlocking(conn, screen, playerName);
             }
@@ -379,14 +378,31 @@ public class AuthMe implements Listener {
     private void showPostJoinScreens(Player player) {
         UUID uuid = player.getUniqueId();
         Cfg.withPlayerContext(player.getName(), () -> {
-            for (CustomScreen screen : plugin.cfg().customScreens()) {
-                if (!screen.enabled()) continue;
-                if (screen.trigger() != com.authmebia.dialog.customscreen.CustomScreen.Trigger.POSTJOIN) continue;
-                if (CustomScreen.isAutoDismissedFor(screen, uuid)) continue;
-                CustomScreen.showCustomScreen(player, screen, player.getName());
-                return;
-            }
+            List<CustomScreen> screens = customScreensFor(CustomScreen.Trigger.POSTJOIN, uuid);
+            showPostJoinScreen(player, screens, 0);
         });
+    }
+
+    private void showPostJoinScreen(Player player, List<CustomScreen> screens, int index) {
+        if (!player.isOnline() || index >= screens.size()) return;
+        CustomScreen screen = screens.get(index);
+        Runnable next = index + 1 < screens.size()
+                ? () -> {
+                    if (player.isOnline()) showPostJoinScreen(player, screens, index + 1);
+                }
+                : null;
+        CustomScreen.showCustomScreen(player, screen, player.getName(), next);
+    }
+
+    private List<CustomScreen> customScreensFor(CustomScreen.Trigger trigger, UUID uuid) {
+        List<CustomScreen> result = new ArrayList<>();
+        for (CustomScreen screen : plugin.cfg().customScreens()) {
+            if (!screen.enabled()) continue;
+            if (screen.trigger() != trigger) continue;
+            if (CustomScreen.isAutoDismissedFor(screen, uuid)) continue;
+            result.add(screen);
+        }
+        return result;
     }
 
     private boolean captchaRequired(Cfg cfg, UUID uuid) {
@@ -755,6 +771,7 @@ public class AuthMe implements Listener {
                         player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}))
         ), 5L);
     }
+    // Session comparison logic adapted from AuthMeReloaded 6.0.1 (AuthMe): https://github.com/AuthMe/AuthMeReloaded/releases/tag/6.0.1
     public boolean isSessionEligibleByLastLogin(String name, String ip) {
         ensureAuthMeConfigFresh();
         if (!cachedSessionsEnabled || name == null || ip == null) return false;
@@ -854,7 +871,11 @@ public class AuthMe implements Listener {
         });
     }
     private void finishRegisterLogin(Player player) {
-        runOnPlayer(player, () -> { clearBlindEffect(player); closeDialog(player); });
+        runOnPlayer(player, () -> {
+            clearBlindEffect(player);
+            closeDialog(player);
+            showPostJoinScreens(player);
+        });
         String email = pendingEmail.remove(player.getUniqueId());
         if (email != null) {
             runAsync(() -> storeEmail(player.getName(), email));

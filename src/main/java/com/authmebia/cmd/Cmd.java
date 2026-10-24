@@ -2,13 +2,16 @@ package com.authmebia.cmd;
 
 import com.authmebia.AuthMeBia;
 import com.authmebia.cmd.add.Add;
+import com.authmebia.cmd.config.ConfigEditor;
 import com.authmebia.cmd.debug.Debug;
 import com.authmebia.cmd.help.Help;
 import com.authmebia.cmd.info.Info;
+import com.authmebia.cmd.look.Look;
 import com.authmebia.cmd.recover.Recover;
 import com.authmebia.cmd.reload.Reload;
 import com.authmebia.cmd.rm.Remove;
 import com.authmebia.cmd.screen.Screen;
+import com.authmebia.cmd.settings.Settings;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import io.papermc.paper.command.brigadier.Commands;
@@ -209,6 +212,31 @@ public class Cmd {
                                     plugin, this::runOnPlayer);
                                 return Command.SINGLE_SUCCESS;
                             }))))
+                .then(Commands.literal("look")
+                    .requires(source -> source.getSender().hasPermission("authmebia.look"))
+                    .then(Commands.argument("target", StringArgumentType.greedyString())
+                        .suggests((ctx, builder) -> {
+                            ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                .forEach(p -> builder.suggest(p.getName()));
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            Look.execute(ctx.getSource().getSender(),
+                                StringArgumentType.getString(ctx, "target"), plugin);
+                            return Command.SINGLE_SUCCESS;
+                        })))
+                .then(Commands.literal("settings")
+                    .requires(source -> source.getSender().hasPermission("authmebia.settings"))
+                    .executes(ctx -> {
+                        Settings.execute(ctx.getSource().getSender(), plugin);
+                        return Command.SINGLE_SUCCESS;
+                    }))
+                .then(Commands.literal("config")
+                    .requires(source -> source.getSender().hasPermission("authmebia.config"))
+                    .executes(ctx -> {
+                        ConfigEditor.execute(ctx.getSource().getSender(), plugin);
+                        return Command.SINGLE_SUCCESS;
+                    }))
                 .executes(ctx -> { Help.execute(ctx.getSource().getSender()); return Command.SINGLE_SUCCESS; })
                 .build(),
             "AuthMeBia main command",

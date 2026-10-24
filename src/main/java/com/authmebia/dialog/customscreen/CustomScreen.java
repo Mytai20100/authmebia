@@ -90,6 +90,11 @@ public record CustomScreen(
     }
 
     public static void showCustomScreen(Player player, com.authmebia.dialog.customscreen.CustomScreen screen, String playerName) {
+        showCustomScreen(player, screen, playerName, null);
+    }
+
+    public static void showCustomScreen(Player player, com.authmebia.dialog.customscreen.CustomScreen screen,
+                                        String playerName, Runnable afterDismiss) {
         if (!screen.enabled()) return;
         UUID uuid = player.getUniqueId();
         try {
@@ -97,13 +102,14 @@ public record CustomScreen(
                 Dialoglib.playSound(player, screen.soundOnShow());
             }
 
-            List<ActionButton> buttons = buildCustomButtons(screen, uuid, playerName, null);
+            List<ActionButton> buttons = buildCustomButtons(screen, uuid, playerName, null, afterDismiss);
 
             if (buttons.isEmpty()) {
                 buttons.add(ActionButton.builder(Component.text("OK"))
                         .width(screen.buttonWidth())
                         .action(DialogAction.customClick(
-                                dismissAwareCallback(screen, uuid, null, null), ClickCallback.Options.builder().build()))
+                                dismissAwareCallback(screen, uuid, null, null, afterDismiss),
+                                ClickCallback.Options.builder().build()))
                         .build());
             }
 
@@ -125,13 +131,14 @@ public record CustomScreen(
         UUID uuid = conn.getProfile().getId();
         try {
             CountDownLatch latch = new CountDownLatch(1);
-            List<ActionButton> buttons = buildCustomButtons(screen, uuid, playerName, latch);
+            List<ActionButton> buttons = buildCustomButtons(screen, uuid, playerName, latch, null);
 
             if (buttons.isEmpty()) {
                 buttons.add(ActionButton.builder(Component.text("OK"))
                         .width(screen.buttonWidth())
                         .action(DialogAction.customClick(
-                                dismissAwareCallback(screen, uuid, null, latch), ClickCallback.Options.builder().build()))
+                                dismissAwareCallback(screen, uuid, null, latch, null),
+                                ClickCallback.Options.builder().build()))
                         .build());
             }
 
@@ -157,7 +164,7 @@ public record CustomScreen(
 
     private static DialogActionCallback dismissAwareCallback(
             com.authmebia.dialog.customscreen.CustomScreen screen, UUID uuid,
-            DialogActionCallback inner, CountDownLatch latchOrNull) {
+            DialogActionCallback inner, CountDownLatch latchOrNull, Runnable afterDismiss) {
         return (DialogResponseView r, Audience a) -> {
             try {
                 if (screen.checkboxAction() == CheckboxAction.CLOSE && screen.checkboxLabel() != null) {
@@ -171,6 +178,14 @@ public record CustomScreen(
                 }
             } finally {
                 if (latchOrNull != null) latchOrNull.countDown();
+                if (afterDismiss != null) {
+                    try {
+                        afterDismiss.run();
+                    } catch (Throwable t) {
+                        AuthMeBia.get().getLogger().warning(
+                                "Custom screen sequence failed: " + t.getMessage());
+                    }
+                }
             }
         };
     }
@@ -190,13 +205,20 @@ public record CustomScreen(
     }
 
     private static List<ActionButton> buildCustomButtons(com.authmebia.dialog.customscreen.CustomScreen screen, UUID uuid,
-                                                         String playerName, CountDownLatch latchOrNull) {
+                                                         String playerName, CountDownLatch latchOrNull,
+                                                         Runnable afterDismiss) {
         List<ActionButton> buttons = new ArrayList<>();
+        boolean hasAdvancingButton = false;
         for (com.authmebia.dialog.customscreen.CustomScreen.Button btn : screen.buttons()) {
             String value = btn.value() != null ? btn.value().replace("{player}", playerName) : "";
             DialogActionCallback soundCb = (r, a) -> {
                 if (btn.sound() != null && a instanceof Player p) Dialoglib.playSound(p, btn.sound());
             };
+            if (btn.action() == com.authmebia.dialog.customscreen.CustomScreen.Button.Action.CLOSE
+                    || btn.action() == com.authmebia.dialog.customscreen.CustomScreen.Button.Action.COMMAND
+                    || btn.action() == com.authmebia.dialog.customscreen.CustomScreen.Button.Action.CONSOLE) {
+                hasAdvancingButton = true;
+            }
             buttons.add(switch (btn.action()) {
                 case OPEN_URL -> ActionButton.builder(btn.label())
                         .width(btn.width())
@@ -216,7 +238,7 @@ public record CustomScreen(
                                     if (a instanceof Player p && !value.isBlank()) {
                                         p.performCommand(value.startsWith("/") ? value.substring(1) : value);
                                     }
-                                }, latchOrNull),
+                                }, latchOrNull, afterDismiss),
                                 ClickCallback.Options.builder().build()))
                         .build();
                 case CONSOLE -> ActionButton.builder(btn.label())
@@ -229,16 +251,24 @@ public record CustomScreen(
                                                 AuthMeBia.get().getServer().getConsoleSender(),
                                                 value.startsWith("/") ? value.substring(1) : value);
                                     }
-                                }, latchOrNull),
+                                }, latchOrNull, afterDismiss),
                                 ClickCallback.Options.builder().build()))
                         .build();
                 case CLOSE -> ActionButton.builder(btn.label())
                         .width(btn.width())
                         .action(DialogAction.customClick(
-                                dismissAwareCallback(screen, uuid, soundCb, latchOrNull),
+                                dismissAwareCallback(screen, uuid, soundCb, latchOrNull, afterDismiss),
                                 ClickCallback.Options.builder().build()))
                         .build();
             });
+        }
+        if (!hasAdvancingButton) {
+            buttons.add(ActionButton.builder(Component.text("OK"))
+                    .width(screen.buttonWidth())
+                    .action(DialogAction.customClick(
+                            dismissAwareCallback(screen, uuid, null, latchOrNull, afterDismiss),
+                            ClickCallback.Options.builder().build()))
+                    .build());
         }
         return buttons;
     }

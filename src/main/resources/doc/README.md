@@ -347,12 +347,34 @@ those button types can never actually trigger it. Use `/bia screen reset
 | Value | Behaviour |
 |-------|-----------|
 | `command` | Only shown via `/bia screen <id> [player]` (default) |
-| `postjoin` | Shown automatically after the player authenticates and spawns |
-| `prejoin` | Shown during the pre-spawn phase (blocking), after auth, before spawn |
+| `postjoin` | Queued after the player authenticates and spawns |
+| `prejoin` | Shown during the pre-spawn phase (blocking), after auth, before spawn, in config order |
 
 When `trigger: postjoin` or `trigger: prejoin`, the screen is shown on **every
-login** while `enabled: true`. Set `enabled: false` when you no longer want
-it auto-shown.
+login or registration** while `enabled: true`. Set `enabled: false` when you
+no longer want it auto-shown.
+
+### Screen sequences
+
+All screens with the same trigger are processed in the order they appear in
+`custom_screens`, from top to bottom. Disabled screens and screens suppressed
+by `checkbox_action: close` are skipped, but they keep their position in the
+list.
+
+- `prejoin`: every eligible screen runs one at a time during the pre-spawn
+  phase. The next screen starts only after the current screen receives a
+  button click, and the player cannot spawn until the sequence finishes.
+- `postjoin`: every eligible screen is queued after authentication and spawn.
+  The next screen opens after the current screen receives a button click, so
+  multiple postjoin screens no longer replace each other or get skipped.
+
+The queue advances only on a server-side button action: `close`, `command`,
+or `console`. `open_url` and `copy` are handled entirely by the client and do
+not notify the server, and closing with ESC or by clicking outside the dialog
+does not advance the queue either. If a screen has no server-side button,
+AuthMeBia adds a fallback `OK` button so the dialog can
+be closed and the next screen can still be reached. Manual `/bia screen <id>`
+calls are immediate and do not use the automatic queue.
 
 ### Button fields
 

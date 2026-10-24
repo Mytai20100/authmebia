@@ -79,6 +79,27 @@ public class Cfg {
         return code.trim().toLowerCase();
     }
 
+    public boolean bstatsEnabled() {
+        return config.getBoolean("bstats", true);
+    }
+
+    public boolean updateCheckerEnabled() {
+        return config.getBoolean("update_checker", true);
+    }
+
+    public String lookIpinfoUrl() {
+        String url = config.getString("look.ipinfo_url", "https://ipinfo.io/{ip}/json");
+        if (url == null || url.isBlank() || !url.contains("{ip}")) {
+            return "https://ipinfo.io/{ip}/json";
+        }
+        return url.trim();
+    }
+
+    public String lookIpinfoToken() {
+        String token = config.getString("look.ipinfo_token", "");
+        return token == null ? "" : token.trim();
+    }
+
     public boolean premiumAutologinEnabled() {
         return config.getBoolean("auto.premium_autologin", false);
     }
@@ -710,12 +731,24 @@ public class Cfg {
 
     // Custom icons
 
+    private static final Map<String, String> BUILTIN_ICONS = Map.of(
+            "settings_general", "item/comparator",
+            "settings_auto", "item/clock",
+            "settings_security", "item/iron_door",
+            "settings_appearance", "item/painting",
+            "settings_auth", "item/name_tag",
+            "config_section", "item/writable_book",
+            "ui_save", "item/lime_dye",
+            "ui_back", "item/arrow",
+            "ui_exit", "item/barrier");
+
     public IconSpec icon(String name) {
         if (name == null || name.isBlank()) return null;
         org.bukkit.configuration.ConfigurationSection section =
                 config.getConfigurationSection("custom_icons." + name);
-        if (section == null) return null;
-        return IconSpec.parse(section.getValues(false));
+        if (section != null) return IconSpec.parse(section.getValues(false));
+        String sprite = BUILTIN_ICONS.get(name);
+        return sprite == null ? null : IconSpec.sprite("items", sprite);
     }
 
     // notifications

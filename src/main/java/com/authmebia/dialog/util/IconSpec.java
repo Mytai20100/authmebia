@@ -38,6 +38,15 @@ public final class IconSpec {
         this.height = height;
     }
 
+    public static IconSpec sprite(String atlas, String sprite) {
+        try {
+            return new IconSpec(Type.SPRITE, Key.key(atlas), Key.key(sprite), null, null,
+                    true, true, 16, 16);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public static IconSpec parse(Map<?, ?> map) {
         if (map == null || map.isEmpty()) return null;
         String typeStr = str(map, "type", "");

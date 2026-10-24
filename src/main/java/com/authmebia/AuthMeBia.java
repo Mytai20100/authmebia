@@ -10,6 +10,8 @@ import com.authmebia.listeners.ipguard.IpGuard;
 import com.authmebia.listeners.recoverstore.RecoverStore;
 import com.authmebia.listeners.screendismiss.ScreenDismissStore;
 import com.authmebia.listeners.version.Version;
+import com.authmebia.metrics.Metrics;
+import com.authmebia.update.UpdateChecker;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
@@ -20,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 
 @SuppressWarnings("UnstableApiUsage")
 public final class AuthMeBia extends JavaPlugin {
+
+    private static final int BSTATS_SERVICE_ID = 34912;
 
     private static AuthMeBia instance;
     private Cfg cfg;
@@ -34,6 +38,8 @@ public final class AuthMeBia extends JavaPlugin {
     private OkHttpClient httpClient;
     private AuthMe authMeListener;
     private com.authmebia.notifications.ToastListener toastListener;
+    private Metrics metrics;
+    private UpdateChecker updateChecker;
 
     @Override
     public void onEnable() {
@@ -91,6 +97,23 @@ public final class AuthMeBia extends JavaPlugin {
             Commands commands = event.registrar();
             new Cmd(this).register(commands);
         });
+
+        if (cfg.bstatsEnabled() && BSTATS_SERVICE_ID > 0) {
+            try {
+                metrics = new Metrics(this, BSTATS_SERVICE_ID);
+            } catch (Throwable t) {
+                getLogger().warning("Could not start bStats: " + t.getMessage());
+            }
+        }
+
+        if (cfg.updateCheckerEnabled()) {
+            try {
+                updateChecker = new UpdateChecker(this);
+                updateChecker.register();
+            } catch (Throwable t) {
+                getLogger().warning("Could not start update checker: " + t.getMessage());
+            }
+        }
 
         warnIfAuthMeDialogConflict();
         warnIfBedrockGeyserModeUnsafe();
@@ -185,6 +208,14 @@ public final class AuthMeBia extends JavaPlugin {
     public void onDisable() {
         Version.reset();
         com.authmebia.listeners.floodgate.Floodgate.reset();
+
+        if (metrics != null) {
+            try {
+                metrics.shutdown();
+            } catch (Throwable t) {
+                getLogger().warning("Could not stop bStats: " + t.getMessage());
+            }
+        }
 
         if (captcha != null) {
             captcha.shutdown();

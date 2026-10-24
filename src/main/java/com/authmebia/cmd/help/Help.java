@@ -14,6 +14,15 @@ public final class Help {
         sb.append(line("/bia add <player>", "Add a player to the dialog bypass list"));
         sb.append(line("/bia rm <player>", "Remove a player from the dialog bypass list"));
         sb.append(line("/bia recover <player>", "Force a password reset on the player's next login"));
+        if (sender.hasPermission("authmebia.look")) {
+            sb.append(line("/bia look <ip|player>", "Show IP or player information"));
+        }
+        if (sender.hasPermission("authmebia.settings")) {
+            sb.append(line("/bia settings", "Edit common settings in a dialog"));
+        }
+        if (sender.hasPermission("authmebia.config")) {
+            sb.append(line("/bia config", "Edit config.yml in a dialog"));
+        }
         if (op) {
             sb.append(line("/bia debug <feature> <true|false|show>", "Test a feature (OP only)"));
             sb.append(note("  Features: captcha, email, register, login, recover, rule"));

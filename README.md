@@ -87,6 +87,20 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 
 </details>
 
+<details>
+<summary>Settings</summary>
+
+![Settings](img/screen_settings.png)
+
+</details>
+
+<details>
+<summary>Config</summary>
+
+![config](img/screen_config.png)
+
+</details>
+
 ---
 
 | Requirement      | Version  | Reason                                                  |
@@ -139,8 +153,11 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 
 **Admin tools**
 - Bypass list: players added with `/bia add` skip all dialogs of bia and fall back to AuthMe's own commands
-- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command. Screens can include an optional agreement checkbox (`checkbox_label`/`checkbox_action`) that permanently suppresses the screen for a player once ticked and dismissed; reset it with `/bia screen reset <player> [id]`
+- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command. Screens with the same trigger run sequentially in config order: prejoin screens block until each server-side button click, and postjoin screens queue one after another instead of replacing each other; `open_url`/`copy` and ESC do not advance the queue. Screens can include an optional agreement checkbox (`checkbox_label`/`checkbox_action`) that permanently suppresses the screen for a player once ticked and dismissed; reset it with `/bia screen reset <player> [id]`
 - Debug commands: preview individual dialogs in-game without going through the full login flow
+- `/bia look <ip|player>` shows IPinfo data for an address or UUID/type information for a player name; the free IPinfo JSON endpoint works without configuration
+- `/bia settings` edits common options in category sub-dialogs and can reload after saving
+- `/bia config` edits config.yml in a dialog, falling back to a section picker for large files
 - Startup check that warns in the console if AuthMe's own built-in dialog (`settings.registration.dialog.preJoin/postJoin.enable`) is also enabled, to prevent two dialogs from appearing at once
 
 **Extras**
@@ -165,6 +182,11 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 | `/bia screen reset <player> [id]` | OP | Reset a player's "closed forever" checkbox for a custom screen (omit `id` to reset all screens)             |
 | `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game                                                                                       |
 | `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state                  |
+| `/bia look <ip\|player>` | `authmebia.look` | Show IP or player information                                                                               |
+| `/bia settings` | `authmebia.settings` | Edit common settings in a dialog                                                                            |
+| `/bia config` | `authmebia.config` | Edit config.yml in a dialog                                                                                 |
+
+Players with `authmebia.update` receive an in-game message when a newer release is found after the startup check or when they join.
 
 Debug features: `captcha`, `email`, `register`, `login`, `recover`, `rule`.
 Use `show` with `captcha` or `email` to preview those dialogs directly without going through the login flow.
@@ -240,6 +262,17 @@ The built jar is placed in `out/artifacts/`. Copy it to your server's `plugins/`
 # To add your own, copy plugins/AuthMeBia/lang/en.yml to lang/<code>.yml and edit it.
 # Reload with /bia reload.
 lang: en
+
+# Anonymous usage statistics via bStats (restart required).
+bstats: true
+
+# Check new version of authmebia ;V
+update_checker: true
+
+# IPinfo settings for /bia look. The default free endpoint works without configuration.
+look:
+  ipinfo_url: "https://ipinfo.io/{ip}/json"
+  ipinfo_token: ""
 
 # Automatic authentication skip for already-verified identities.
 # Both flags default to false. With both false, behavior is identical to not
@@ -471,8 +504,44 @@ custom_icons:
     type: sprite
     atlas: items
     sprite: item/trial_key
+  settings_general:
+    type: sprite
+    atlas: items
+    sprite: item/comparator
+  settings_auto:
+    type: sprite
+    atlas: items
+    sprite: item/clock
+  settings_security:
+    type: sprite
+    atlas: items
+    sprite: item/iron_door
+  settings_appearance:
+    type: sprite
+    atlas: items
+    sprite: item/painting
+  settings_auth:
+    type: sprite
+    atlas: items
+    sprite: item/name_tag
+  config_section:
+    type: sprite
+    atlas: items
+    sprite: item/writable_book
+  ui_save:
+    type: sprite
+    atlas: items
+    sprite: item/lime_dye
+  ui_back:
+    type: sprite
+    atlas: items
+    sprite: item/arrow
+  ui_exit:
+    type: sprite
+    atlas: items
+    sprite: item/barrier
 
-config_version: 2
+config_version: 3
 ```
 
 </details>
