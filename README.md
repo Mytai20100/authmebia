@@ -219,6 +219,11 @@ AuthMeBia also optionally bridges to Floodgate's API the same way used in the Au
 
 ---
 
+- **Statistics:**
+  [![Graph](https://bstats.org/signatures/bukkit/authmebia.svg)](https://bstats.org/plugin/bukkit/authmebia/34912)
+
+---
+
 ## Building from source
 
 ### Clone
