@@ -45,12 +45,14 @@ public final class Register {
         if (mode == Mode.SLIDER) return AuthInput.collectSliderBlocking(conn, cfg, null);
 
         AuthMe authMe = AuthMeBia.get().authMeListener();
-        boolean emailActive = authMe != null && authMe.isEmailVerificationActive();
+        boolean addEmailWithoutVerify = authMe != null && authMe.canStoreEmail()
+                && cfg.registerEmailAddNonVerify();
+        boolean verifyEmail = !addEmailWithoutVerify && authMe != null && authMe.isEmailVerificationActive();
+        boolean emailActive = addEmailWithoutVerify || verifyEmail;
 
         AtomicReference<String> error = new AtomicReference<>(null);
         AtomicReference<String> emailErr = new AtomicReference<>(null);
         String playerName = conn.getProfile().getName();
-        java.util.UUID uuid = conn.getProfile().getId();
 
         while (ConnectionState.isConnected(conn)) {
             CountDownLatch latch = new CountDownLatch(1);
@@ -116,10 +118,10 @@ public final class Register {
             if (disconnect.get()) return null;
             if (result.get() != null) {
                 if (!emailActive) return result.get();
-                if (!verifyEmailBlocking(conn, cfg, playerName, emailRef.get())) {
+                if (verifyEmail && !verifyEmailBlocking(conn, cfg, playerName, emailRef.get())) {
                     return null;
                 }
-                if (uuid != null) authMe.pendingEmail.put(uuid, emailRef.get());
+                authMe.storePreJoinEmail(conn, emailRef.get());
                 return result.get();
             }
         }
@@ -202,7 +204,9 @@ public final class Register {
             String playerName = player.getName();
             String ip = player.getAddress() != null && player.getAddress().getAddress() != null
                     ? player.getAddress().getAddress().getHostAddress() : null;
-            boolean emailActive = authMe.isEmailVerificationActive();
+            boolean addEmailWithoutVerify = authMe.canStoreEmail() && cfg.registerEmailAddNonVerify();
+            boolean verifyEmail = !addEmailWithoutVerify && authMe.isEmailVerificationActive();
+            boolean emailActive = addEmailWithoutVerify || verifyEmail;
 
             DialogActionCallback logoutCb = (r, a) -> {
                 if (a instanceof Player p) {
@@ -248,6 +252,11 @@ public final class Register {
                                         return;
                                     }
                                     Dialoglib.clearEscapeGuard(p.getUniqueId());
+                                    if (addEmailWithoutVerify) {
+                                        authMe.pendingEmail.put(p.getUniqueId(), email.trim());
+                                        authMe.runAsync(() -> authMe.registerAndLogin(p, pass));
+                                        return;
+                                    }
                                     Email.startEmailVerifyIngame(p, cfg, lang, authMe, email.trim(), pass);
                                     return;
                                 }

@@ -1,6 +1,7 @@
 package com.authmebia;
 
 import com.authmebia.cfg.Cfg;
+import com.authmebia.cfg.TitleScript;
 import com.authmebia.dialog.Mode;
 import com.authmebia.dialog.captcha.Captcha;
 import com.authmebia.dialog.customscreen.CustomScreen;
@@ -15,9 +16,11 @@ import com.authmebia.dialog.util.Util;
 import com.authmebia.listeners.version.Version;
 import com.authmebia.listeners.ipguard.IpGuard;
 import com.authmebia.service.ConnectionState;
-import com.authmebia.service.NameClaimRegistry;
+import com.authmebia.service.PrejoinClaim;
+import com.destroystokyo.paper.event.player.PlayerConnectionCloseEvent;
 import fr.xephi.authme.events.FailedLoginEvent;
 import fr.xephi.authme.events.LoginEvent;
+import fr.xephi.authme.events.LogoutEvent;
 import fr.xephi.authme.events.RegisterEvent;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent;
@@ -77,21 +80,29 @@ public class AuthMe implements Listener {
     private volatile boolean cachedSessionsEnabled = false;
     private volatile long cachedSessionTimeoutMinutes = 0;
     private volatile long cachedConfigLastModified = -1L;
-    final Map<UUID, String> pendingRegister = new ConcurrentHashMap<>();
-    final Map<UUID, Boolean> pendingForceLogin = new ConcurrentHashMap<>();
-    final Map<UUID, Boolean> pendingAutoLogin = new ConcurrentHashMap<>();
     private final Map<UUID, CompletableFuture<Boolean>> pendingLoginFutures = new ConcurrentHashMap<>();
-    private final Map<UUID, CompletableFuture<Boolean>> pendingRegisterFutures = new ConcurrentHashMap<>();
-    // Prevents two connections joining under the same name from racing through the
-    // pre-join dialog concurrently. On offline-mode servers the player UUID is derived
-    // solely from the name, so without this a second connection could read/overwrite
-    // the first connection's pendingRegister/pendingForceLogin state mid-dialog.
-    private final NameClaimRegistry nameClaimRegistry = new NameClaimRegistry();
+    // Pre-join state is scoped to one configuration connection (session), not to a
+    // UUID/name: on offline-mode servers those are shared by every connection using
+    // the same name. The claim is held until the player actually joins, and closed
+    // connections are retired.
+    private final PrejoinClaim prejoinClaims = new PrejoinClaim();
+    private final Map<UUID, Boolean> firstJoinSessions = new ConcurrentHashMap<>();
+    private final Map<UUID, java.util.Set<String>> pendingTitleTriggers = new ConcurrentHashMap<>();
+    private final java.util.Set<UUID> titleFlushScheduled = ConcurrentHashMap.newKeySet();
+    private final java.util.Set<UUID> registeredThisSession = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Long> registrationNotifications = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> loginTimeoutGenerations = new ConcurrentHashMap<>();
+    private final java.util.Set<UUID> postJoinScreensHandled = ConcurrentHashMap.newKeySet();
+    private final java.util.Set<UUID> recoveredThisSession = ConcurrentHashMap.newKeySet();
 
     public AuthMe(AuthMeBia plugin) {
         this.plugin = plugin;
         initReflection();
         refreshAuthMeConfigCache();
+        if (plugin.cfg().registerEmailAddNonVerify() && !canStoreEmail()) {
+            plugin.getLogger().warning("dialog.register.email_add_nonverify is enabled but AuthMe "
+                    + "email storage is unavailable; email collection will be disabled.");
+        }
     }
 
     private Method getLastIp;
@@ -259,15 +270,15 @@ public class AuthMe implements Listener {
         UUID uuid = connection.getProfile().getId();
         if (name == null || uuid == null) return;
 
-        // Claim this name for the duration of the pre-join dialog so a second connection
-        // joining under the same name (offline-mode UUIDs are name-derived, so it would
-        // collide on the exact same UUID key used below) can't read or overwrite this
-        // connection's pendingRegister/pendingForceLogin/pendingAutoLogin state.
-        if (!nameClaimRegistry.tryClaim(name, connection, TimeUnit.MINUTES.toMillis(5))) {
+        // Hold this name from the start of the pre-join dialog until the player actually
+        // joins. A second connection using the same name (offline-mode UUIDs are
+        // name-derived) is disconnected instead of being able to take over this
+        // connection's pending state.
+        PrejoinClaim.Session session = prejoinClaims.acquire(name, connection);
+        if (session == null) {
             connection.disconnect(plugin.lang().disconnectAlreadyConnecting(IpGuard.resolveIp(connection)));
             return;
         }
-
         try {
             if (plugin.biaList().isBypassed(uuid)) {
                 return;
@@ -284,7 +295,7 @@ public class AuthMe implements Listener {
 
             UUID autoLoginJavaUuid = resolveAutoLoginJavaUuid(uuid, name);
             if (autoLoginJavaUuid != null) {
-                pendingAutoLogin.put(uuid, true);
+                session.setAutoLogin(true);
                 return;
             }
 
@@ -321,8 +332,10 @@ public class AuthMe implements Listener {
                 }
                 changePassword(name, newPass);
                 plugin.recoverStore().clear(uuid);
+                session.setRecovered(true);
                 showPrejoinScreensBlocking(connection, name);
-                pendingForceLogin.put(uuid, true);
+                if (!ConnectionState.isConnected(connection)) return;
+                session.setForceLogin(true);
                 authed.set(true);
                 return;
             }
@@ -333,19 +346,20 @@ public class AuthMe implements Listener {
                     connection.disconnect(lang.disconnectRegistrationCancelled(ip));
                     return;
                 }
-                pendingRegister.put(uuid, password);
+                session.setRegisterPassword(password);
 
                 if (cfg.ruleEnabled()) {
                     boolean agreed = Rule.showRuleBlocking(connection, cfg);
                     if (!agreed) {
                         connection.disconnect(lang.disconnectMustAgreeRules(ip));
-                        pendingRegister.remove(uuid);
+                        session.clearRegisterPassword();
                         return;
                     }
                 }
 
                 showPrejoinScreensBlocking(connection, name);
-                pendingForceLogin.put(uuid, true);
+                if (!ConnectionState.isConnected(connection)) return;
+                session.setForceLogin(true);
                 authed.set(true);
             } else {
                 boolean ok = Login.showLoginBlocking(connection, name, cfg, lang, this, plugin.ipGuard(), ip);
@@ -353,15 +367,20 @@ public class AuthMe implements Listener {
                     connection.disconnect(lang.disconnectLoginFailed(ip));
                 } else {
                     showPrejoinScreensBlocking(connection, name);
-                    pendingForceLogin.put(uuid, true);
+                    if (!ConnectionState.isConnected(connection)) return;
+                    session.setForceLogin(true);
                     authed.set(true);
                 }
             }
         } finally {
-            // Release unconditionally: onConfigure only returns after either disconnecting
-            // the connection or handing off to onJoin (which fires on the same, still-live
-            // connection), so nothing else could have taken over this name's claim yet.
-            nameClaimRegistry.releaseForce(name);
+            // If the connection died during a blocking dialog, drop its session and claim
+            // now. Otherwise keep both until onJoin consumes the state and releases the
+            // claim; PlayerConnectionCloseEvent is the safety net for a disconnect in the
+            // hand-off window. Releasing the claim here would let another same-name
+            // connection take over the pre-join state.
+            if (!ConnectionState.isConnected(connection)) {
+                prejoinClaims.retire(connection);
+            }
         }
     }
 
@@ -376,7 +395,10 @@ public class AuthMe implements Listener {
     }
 
     private void showPostJoinScreens(Player player) {
+        if (player == null || !player.isOnline() || !plugin.cfg().dialogEnabled()) return;
         UUID uuid = player.getUniqueId();
+        if (plugin.biaList().isBypassed(uuid)) return;
+        if (!postJoinScreensHandled.add(uuid)) return;
         Cfg.withPlayerContext(player.getName(), () -> {
             List<CustomScreen> screens = customScreensFor(CustomScreen.Trigger.POSTJOIN, uuid);
             showPostJoinScreen(player, screens, 0);
@@ -418,77 +440,115 @@ public class AuthMe implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+        firstJoinSessions.put(uuid, !player.hasPlayedBefore());
 
-        if (pendingAutoLogin.remove(uuid) != null) {
+        // Consume this connection's pre-join session once, then release the name.
+        // The state no longer has to be trusted to a UUID that an offline-mode
+        // connection with the same name could reuse: it was created for exactly one
+        // configuration connection, and a later connection opens a new session.
+        PrejoinClaim.PendingState pending = prejoinClaims.consume(player.getName());
+        if (pending.recovered()) {
+            recoveredThisSession.add(uuid);
+        }
+
+        if (pending.autoLogin()) {
             runAsync(() -> completeAutoLogin(player));
             return;
         }
 
-        String pending = pendingRegister.remove(uuid);
-        if (pending != null) {
-            boolean doLogin = pendingForceLogin.remove(uuid) != null;
+        String pendingPassword = pending.registerPassword();
+        if (pendingPassword != null) {
+            boolean doLogin = pending.forceLogin();
+            if (doLogin && pending.email() != null) {
+                pendingEmail.put(uuid, pending.email());
+            }
             boolean numeric = plugin.cfg().authMode() != Mode.PASSWORD;
             if (numeric) {
                 runAsync(() -> {
                     if (doLogin) {
-                        registerAndLoginNumeric(player, pending);
-                    } else if (!registerPlayerNoValidation(player.getName(), pending)) {
+                        registerAndLoginNumeric(player, pendingPassword);
+                    } else if (!registerPlayerNoValidation(player.getName(), pendingPassword)) {
                         plugin.getLogger().warning("registerPlayer (PIN/slider) failed for " + player.getName());
                     }
                 });
             } else if (doLogin) {
-                registerAndLogin(player, pending);
+                registerAndLogin(player, pendingPassword);
             }
             return;
-        } else if (pendingForceLogin.remove(uuid) != null) {
+        } else if (pending.forceLogin()) {
             login(player);
         }
 
+        boolean sessionAuthenticated = plugin.cfg().sessionAutologinEnabled()
+                && isSessionAuthenticated(player.getName());
+        boolean sessionSkip = plugin.cfg().sessionAutologinEnabled()
+                && (sessionAuthenticated
+                        || isSessionEligibleByLastLogin(player.getName(), Util.ipOf(player)));
         if (plugin.cfg().dialogEnabled() && !plugin.cfg().dialogPreSpawn()
                 && !plugin.biaList().isBypassed(uuid)
                 && !isPremiumSkip(uuid, player.getName())
-                && !(plugin.cfg().sessionAutologinEnabled()
-                        && (isSessionAuthenticated(player.getName())
-                                || isSessionEligibleByLastLogin(player.getName(), Util.ipOf(player))))) {
-            Cfg cfg = resolveEffectiveCfg(uuid);
-            boolean registered = isRegisteredByName(player.getName());
-            boolean recover = registered && plugin.recoverStore().isFlagged(uuid);
-            boolean dialogsSupported = Version.supportsDialogs(uuid, player, cfg.dialogMinProtocolVersion());
-            boolean numericMode = cfg.authMode() == Mode.PIN || cfg.authMode() == Mode.SLIDER;
+                && !sessionSkip) {
+            showPostJoinAuth(player);
+        } else if (sessionAuthenticated) {
+            schedulePostJoinScreens(player);
+        }
+    }
 
-            if (dialogsSupported) {
-                runOnPlayer(player, () -> {
-                    if (recover) {
-                        Recover.showRecoverIngame(player, cfg, this, () -> {
-                            plugin.recoverStore().clear(uuid);
-                            if (!isAuthenticated(player)) runAsync(() -> login(player));
-                        });
-                    } else if (registered) {
-                        Login.showLoginIngame(player, cfg, plugin.lang(), this, plugin.ipGuard());
-                    } else {
-                        Register.showRegisterIngame(player, cfg, plugin.lang(), this);
-                    }
-                    if (plugin.cfg().loginTimeoutEnabled()) {
-                        startPostSpawnTimeout(player);
-                    }
-                });
-            } else if (numericMode) {
-                runOnPlayer(player, () -> {
-                    if (recover) {
-                        Recover.showRecoverInventoryFallback(player, cfg, this, () -> {
-                            plugin.recoverStore().clear(uuid);
-                            if (!isAuthenticated(player)) runAsync(() -> login(player));
-                        });
-                    } else if (registered) {
-                        Login.showLoginInventoryFallback(player, cfg, plugin.lang(), this, plugin.ipGuard());
-                    } else {
-                        Register.showRegisterInventoryFallback(player, cfg, plugin.lang(), this);
-                    }
-                    if (plugin.cfg().loginTimeoutEnabled()) {
-                        startPostSpawnTimeout(player);
-                    }
-                });
+    private void schedulePostJoinScreens(Player player) {
+        if (player == null || !player.isOnline()) return;
+        runLater(player, () -> {
+            if (player.isOnline() && isAuthenticated(player)) {
+                showPostJoinScreens(player);
             }
+        }, 2L);
+    }
+
+    private void showPostJoinAuth(Player player) {
+        UUID uuid = player.getUniqueId();
+        if (!plugin.cfg().dialogEnabled() || plugin.biaList().isBypassed(uuid)) return;
+
+        Cfg cfg = resolveEffectiveCfg(uuid);
+        boolean registered = isRegisteredByName(player.getName());
+        boolean recover = registered && plugin.recoverStore().isFlagged(uuid);
+        boolean dialogsSupported = Version.supportsDialogs(uuid, player, cfg.dialogMinProtocolVersion());
+        boolean numericMode = cfg.authMode() == Mode.PIN || cfg.authMode() == Mode.SLIDER;
+
+        if (dialogsSupported) {
+            runOnPlayer(player, () -> {
+                if (!player.isOnline()) return;
+                if (recover) {
+                    Recover.showRecoverIngame(player, cfg, this, () -> {
+                        plugin.recoverStore().clear(uuid);
+                        if (!isAuthenticated(player)) {
+                            recoveredThisSession.add(uuid);
+                            runAsync(() -> login(player));
+                        }
+                    });
+                } else if (registered) {
+                    Login.showLoginIngame(player, cfg, plugin.lang(), this, plugin.ipGuard());
+                } else {
+                    Register.showRegisterIngame(player, cfg, plugin.lang(), this);
+                }
+                if (plugin.cfg().loginTimeoutEnabled()) startPostSpawnTimeout(player);
+            });
+        } else if (numericMode) {
+            runOnPlayer(player, () -> {
+                if (!player.isOnline()) return;
+                if (recover) {
+                    Recover.showRecoverInventoryFallback(player, cfg, this, () -> {
+                        plugin.recoverStore().clear(uuid);
+                        if (!isAuthenticated(player)) {
+                            recoveredThisSession.add(uuid);
+                            runAsync(() -> login(player));
+                        }
+                    });
+                } else if (registered) {
+                    Login.showLoginInventoryFallback(player, cfg, plugin.lang(), this, plugin.ipGuard());
+                } else {
+                    Register.showRegisterInventoryFallback(player, cfg, plugin.lang(), this);
+                }
+                if (plugin.cfg().loginTimeoutEnabled()) startPostSpawnTimeout(player);
+            });
         }
     }
 
@@ -496,7 +556,15 @@ public class AuthMe implements Listener {
     public void onAuthMeLogin(LoginEvent event) {
         Player player = event.getPlayer();
         if (player == null) return;
-        completeFuture(pendingLoginFutures, player.getUniqueId(), true);
+        UUID uuid = player.getUniqueId();
+        completeFuture(pendingLoginFutures, uuid, true);
+        queueTitleTrigger(player, "is_login");
+        queueTitleTrigger(player, Boolean.TRUE.equals(firstJoinSessions.get(uuid))
+                ? "is_firstjoin" : "is_rejoin");
+        if (recoveredThisSession.remove(uuid)) {
+            queueTitleTrigger(player, "is_recover");
+        }
+        schedulePostJoinScreens(player);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -510,15 +578,86 @@ public class AuthMe implements Listener {
     public void onAuthMeRegister(RegisterEvent event) {
         Player player = event.getPlayer();
         if (player == null) return;
-        completeFuture(pendingRegisterFutures, player.getUniqueId(), true);
+        registeredThisSession.add(player.getUniqueId());
+        queueTitleTrigger(player, "is_registed");
+        notifyRegistration(player);
+        schedulePostJoinScreens(player);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAuthMeLogout(LogoutEvent event) {
+        Player player = event.getPlayer();
+        if (player == null || !player.isOnline()) return;
+        UUID uuid = player.getUniqueId();
+        pendingTitleTriggers.remove(uuid);
+        titleFlushScheduled.remove(uuid);
+        firstJoinSessions.remove(uuid);
+        registeredThisSession.remove(uuid);
+        registrationNotifications.remove(uuid);
+        pendingEmail.remove(uuid);
+        postJoinScreensHandled.remove(uuid);
+        recoveredThisSession.remove(uuid);
+        loginTimeoutGenerations.merge(uuid, 1L, Long::sum);
+        plugin.titles().cancel(player);
+        queueTitleTrigger(player, "is_logout");
+        runOnPlayer(player, () -> {
+            if (!player.isOnline() || isAuthenticated(player)) return;
+            closeDialog(player);
+            showPostJoinAuth(player);
+        });
+    }
+
+    private void queueTitleTrigger(Player player, String trigger) {
+        if (player == null || !player.isOnline()) return;
+        UUID uuid = player.getUniqueId();
+        String normalized = TitleScript.normalizeTrigger(trigger);
+        if (normalized.isEmpty()) return;
+        pendingTitleTriggers.computeIfAbsent(uuid, k -> ConcurrentHashMap.newKeySet()).add(normalized);
+        if (titleFlushScheduled.add(uuid)) {
+            runLater(player, () -> flushTitleTriggers(player), 2L);
+        }
+    }
+
+    private void flushTitleTriggers(Player player) {
+        UUID uuid = player.getUniqueId();
+        titleFlushScheduled.remove(uuid);
+        java.util.Set<String> triggers = pendingTitleTriggers.remove(uuid);
+        if (triggers == null || triggers.isEmpty() || !player.isOnline()) return;
+
+        List<String> sequence = new ArrayList<>();
+        Cfg.withPlayerContext(player.getName(), () -> {
+            // The whole sequence is collected before playback so a registration
+            // and its immediate LoginEvent do not overwrite each other.
+            appendTitleSection(sequence, "dialog.register", triggers, "is_registed");
+            appendTitleSection(sequence, "dialog.login", triggers, "is_login");
+            if (triggers.contains("is_recover")) {
+                appendTitleSection(sequence, "recover", triggers, "is_recover");
+            }
+        });
+        if (!sequence.isEmpty()) plugin.titles().play(player, sequence);
+    }
+
+    private void appendTitleSection(List<String> out, String path, java.util.Set<String> triggers,
+                                    String defaultTrigger) {
+        TitleScript script = plugin.cfg().titleScript(path);
+        if (script.isEmpty()) return;
+        if (script.hasTriggerFilter() ? script.matchesAny(triggers) : triggers.contains(defaultTrigger)) {
+            out.addAll(script.entries());
+        }
+    }
+
+    private void notifyRegistration(Player player) {
+        if (player == null || !player.isOnline()) return;
+        long now = System.currentTimeMillis();
+        UUID uuid = player.getUniqueId();
+        Long previous = registrationNotifications.get(uuid);
+        if (previous != null && now - previous < 10_000L) return;
+        registrationNotifications.put(uuid, now);
+        runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
     }
 
     private CompletableFuture<Boolean> awaitLogin(Player player, long timeoutMs) {
         return await(pendingLoginFutures, player.getUniqueId(), timeoutMs);
-    }
-
-    private CompletableFuture<Boolean> awaitRegister(Player player, long timeoutMs) {
-        return await(pendingRegisterFutures, player.getUniqueId(), timeoutMs);
     }
 
     private CompletableFuture<Boolean> await(Map<UUID, CompletableFuture<Boolean>> map, UUID uuid, long timeoutMs) {
@@ -587,8 +726,11 @@ public class AuthMe implements Listener {
         boolean kick = configured != 0;
         int delaySeconds = configured == 0 ? 60 : configured;
         UUID uuid = player.getUniqueId();
+        long generation = loginTimeoutGenerations.merge(uuid, 1L, Long::sum);
         Runnable task = () -> {
-            if (!player.isOnline() || isAuthenticated(player)) return;
+            if (!player.isOnline()
+                    || generation != loginTimeoutGenerations.getOrDefault(uuid, 0L)
+                    || isAuthenticated(player)) return;
             if (kick) {
                 player.kick(plugin.cfg().loginTimeoutKickMessage());
             } else {
@@ -614,7 +756,37 @@ public class AuthMe implements Listener {
         AuthInput.clearSession(uuid);
         EmailVerify.clearEmailSession(uuid);
         pendingEmail.remove(uuid);
+        firstJoinSessions.remove(uuid);
+        registeredThisSession.remove(uuid);
+        pendingTitleTriggers.remove(uuid);
+        titleFlushScheduled.remove(uuid);
+        registrationNotifications.remove(uuid);
+        postJoinScreensHandled.remove(uuid);
+        recoveredThisSession.remove(uuid);
+        loginTimeoutGenerations.remove(uuid);
+        plugin.titles().forget(uuid);
         com.authmebia.dialog.Dialoglib.clearEscapeGuard(uuid);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onConnectionClose(PlayerConnectionCloseEvent event) {
+        // PlayerQuitEvent only exists after the player joined. A connection that closes
+        // during login/configuration leaves no quit event, so retire pre-join sessions
+        // here. Retire by connection, not by the event's UUID/name: both are shared by
+        // every offline-mode connection using the same name, and a refused duplicate
+        // connection must not wipe a live connection's session or claim.
+        prejoinClaims.retireDeadConnections();
+        String name = event.getPlayerName();
+        if (name != null) {
+            prejoinClaims.releaseIfStale(name);
+        }
+    }
+
+    public void storePreJoinEmail(PlayerConfigurationConnection connection, String email) {
+        PrejoinClaim.Session session = prejoinClaims.session(connection);
+        if (session != null) {
+            session.setEmail(email);
+        }
     }
 
     public boolean isRegisteredByName(String name) {
@@ -647,8 +819,8 @@ public class AuthMe implements Listener {
                 closeDialog(player);
                 showPostJoinScreens(player);
             });
-            if (welcome && (plugin.cfg().welcomeImageEnabled() || plugin.cfg().discordEnabled())) {
-                runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
+            if (welcome) {
+                notifyRegistration(player);
             }
             if (onSuccess != null) {
                 onSuccess.run();
@@ -689,6 +861,14 @@ public class AuthMe implements Listener {
     public boolean isAuthenticated(Player player) {
         try { return (boolean) isAuthenticated.invoke(api, player); }
         catch (Exception e) { return false; }
+    }
+
+    public boolean isFirstJoinSession(UUID uuid) {
+        return uuid != null && Boolean.TRUE.equals(firstJoinSessions.get(uuid));
+    }
+
+    public boolean wasRegisteredThisSession(UUID uuid) {
+        return uuid != null && registeredThisSession.contains(uuid);
     }
 
     public boolean registerPlayerNoValidation(String name, String password) {
@@ -771,25 +951,25 @@ public class AuthMe implements Listener {
                         player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}))
         ), 5L);
     }
-    // Session comparison logic adapted from AuthMeReloaded 6.0.1 (AuthMe): https://github.com/AuthMe/AuthMeReloaded/releases/tag/6.0.1
     public boolean isSessionEligibleByLastLogin(String name, String ip) {
         ensureAuthMeConfigFresh();
         if (!cachedSessionsEnabled || name == null || ip == null) return false;
         if (getLastIp == null || getLastLoginTime == null) return false;
         if (dataSource == null || dsHasSession == null) return false;
+        String account = name.toLowerCase(java.util.Locale.ROOT);
         try {
-            Object hasSessionObj = dsHasSession.invoke(dataSource, name.toLowerCase(java.util.Locale.ROOT));
-            if (!(hasSessionObj instanceof Boolean hasSession) || !hasSession) return false;
+            Object hasSession = dsHasSession.invoke(dataSource, account);
+            if (!Boolean.TRUE.equals(hasSession)) return false;
 
-            String lastIp = (String) getLastIp.invoke(api, name);
-            if (lastIp == null) return false;
-            if (!lastIp.equalsIgnoreCase(ip)) {
-                return false;
-            }
-            Object lastLoginObj = getLastLoginTime.invoke(api, name);
-            if (!(lastLoginObj instanceof java.time.Instant lastLogin)) return false;
-            long elapsedMs = System.currentTimeMillis() - lastLogin.toEpochMilli();
-            return elapsedMs > 0 && elapsedMs < cachedSessionTimeoutMinutes * 60_000L;
+            Object recordedIp = getLastIp.invoke(api, name);
+            if (!(recordedIp instanceof String lastIp) || !lastIp.equalsIgnoreCase(ip)) return false;
+
+            Object recordedTime = getLastLoginTime.invoke(api, name);
+            if (!(recordedTime instanceof java.time.Instant lastLogin)) return false;
+
+            long age = System.currentTimeMillis() - lastLogin.toEpochMilli();
+            long maxAge = cachedSessionTimeoutMinutes * 60_000L;
+            return age >= 0 && age <= maxAge;
         } catch (Exception e) {
             return false;
         }
@@ -831,15 +1011,28 @@ public class AuthMe implements Listener {
             return null;
         }
     }
-    public void storeEmail(String name, String email) {
-        if (dataSource == null || dsGetAuth == null || dsUpdateEmail == null || authSetEmail == null) return;
+    public boolean canStoreEmail() {
+        return dataSource != null && dsGetAuth != null && dsUpdateEmail != null && authSetEmail != null;
+    }
+
+    public boolean storeEmail(String name, String email) {
+        if (!canStoreEmail()) {
+            plugin.getLogger().warning("Cannot store email for " + name
+                    + ": AuthMe email datasource is unavailable");
+            return false;
+        }
         try {
             Object auth = dsGetAuth.invoke(dataSource, name.toLowerCase(java.util.Locale.ROOT));
-            if (auth == null) return;
+            if (auth == null) {
+                plugin.getLogger().warning("Cannot store email for " + name + ": AuthMe account not found");
+                return false;
+            }
             authSetEmail.invoke(auth, email);
             dsUpdateEmail.invoke(dataSource, auth);
+            return true;
         } catch (Exception e) {
             plugin.getLogger().warning("storeEmail failed for " + name + ": " + e.getMessage());
+            return false;
         }
     }
     public void registerAndLogin(Player player, String password) {
@@ -878,11 +1071,14 @@ public class AuthMe implements Listener {
         });
         String email = pendingEmail.remove(player.getUniqueId());
         if (email != null) {
-            runAsync(() -> storeEmail(player.getName(), email));
+            runAsync(() -> {
+                if (!storeEmail(player.getName(), email)) {
+                    plugin.getLogger().warning("Registration succeeded for " + player.getName()
+                            + " but the no-verify email could not be persisted");
+                }
+            });
         }
-        if (plugin.cfg().welcomeImageEnabled() || plugin.cfg().discordEnabled()) {
-            runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
-        }
+        notifyRegistration(player);
     }
     private void clearBlindEffect(Player player) {
         if (!cachedBlindEffectEnabled) return;

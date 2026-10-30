@@ -12,6 +12,7 @@ import com.authmebia.cmd.reload.Reload;
 import com.authmebia.cmd.rm.Remove;
 import com.authmebia.cmd.screen.Screen;
 import com.authmebia.cmd.settings.Settings;
+import com.authmebia.cmd.titles.Titles;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import io.papermc.paper.command.brigadier.Commands;
@@ -160,6 +161,36 @@ public class Cmd {
                                             StringArgumentType.getString(ctx, "show"),
                                             StringArgumentType.getString(ctx, "seconds"),
                                             plugin);
+                                        return Command.SINGLE_SUCCESS;
+                                    }))))))
+                .then(Commands.literal("titles")
+                    .requires(source -> source.getSender().hasPermission("authmebia.titles"))
+                    .then(Commands.argument("title", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            plugin.cfg().customTitleNames().forEach(builder::suggest);
+                            return builder.buildFuture();
+                        })
+                        .then(Commands.argument("player", StringArgumentType.word())
+                            .suggests((ctx, builder) -> {
+                                ctx.getSource().getSender().getServer().getOnlinePlayers()
+                                    .forEach(p -> builder.suggest(p.getName()));
+                                return builder.buildFuture();
+                            })
+                            .then(Commands.literal("show")
+                                .executes(ctx -> {
+                                    Titles.execute(ctx.getSource().getSender(),
+                                        StringArgumentType.getString(ctx, "title"),
+                                        StringArgumentType.getString(ctx, "player"),
+                                        null, plugin, this::runOnPlayer);
+                                    return Command.SINGLE_SUCCESS;
+                                })
+                                .then(Commands.argument("seconds", StringArgumentType.word())
+                                    .executes(ctx -> {
+                                        Titles.execute(ctx.getSource().getSender(),
+                                            StringArgumentType.getString(ctx, "title"),
+                                            StringArgumentType.getString(ctx, "player"),
+                                            StringArgumentType.getString(ctx, "seconds"),
+                                            plugin, this::runOnPlayer);
                                         return Command.SINGLE_SUCCESS;
                                     }))))))
                 .then(Commands.literal("screen")

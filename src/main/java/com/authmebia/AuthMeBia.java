@@ -11,6 +11,7 @@ import com.authmebia.listeners.recoverstore.RecoverStore;
 import com.authmebia.listeners.screendismiss.ScreenDismissStore;
 import com.authmebia.listeners.version.Version;
 import com.authmebia.metrics.Metrics;
+import com.authmebia.notifications.TitleService;
 import com.authmebia.update.UpdateChecker;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
@@ -37,6 +38,7 @@ public final class AuthMeBia extends JavaPlugin {
     private boolean foliaServer;
     private OkHttpClient httpClient;
     private AuthMe authMeListener;
+    private TitleService titleService;
     private com.authmebia.notifications.ToastListener toastListener;
     private Metrics metrics;
     private UpdateChecker updateChecker;
@@ -54,6 +56,7 @@ public final class AuthMeBia extends JavaPlugin {
 
         saveDefaultConfig();
         cfg = new Cfg(this);
+        titleService = new TitleService(this);
         lang = new Lang(this);
         captcha = new Captcha();
         ipGuard = new IpGuard();
@@ -328,6 +331,10 @@ public final class AuthMeBia extends JavaPlugin {
 
     public AuthMe authMeListener() {
         return authMeListener;
+    }
+
+    public TitleService titles() {
+        return titleService;
     }
     public com.authmebia.notifications.ToastListener toastListener() {
         return toastListener;

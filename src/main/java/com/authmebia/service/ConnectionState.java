@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 @SuppressWarnings("UnstableApiUsage")
 public final class ConnectionState {
 
-    private static final long FALLBACK_MAX_LIFETIME_MS = TimeUnit.MINUTES.toMillis(15);
+    private static final long FALLBACK_MAX_LIFETIME_MS = TimeUnit.HOURS.toMillis(2);
     private static final Method NATIVE_IS_CONNECTED = findNativeMethod();
     private static final Map<MemberKey, Optional<Field>> FIELDS = new ConcurrentHashMap<>();
     private static final Map<MemberKey, Optional<Method>> METHODS = new ConcurrentHashMap<>();

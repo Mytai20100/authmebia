@@ -1,6 +1,6 @@
 name: AuthMeBia
 description: A addons for authme reload that allows players have a expermental dialog login/register.
-version: '0.1.0'
+version: '0.1.1'
 folia-supported: true
 main: com.authmebia.AuthMeBia
 loader: com.authmebia.loader.AuthMeBiaLoader
@@ -35,6 +35,9 @@ permissions:
     default: op
   authmebia.config:
     description: Edit config.yml in a dialog (/bia config)
+    default: op
+  authmebia.titles:
+    description: Preview custom titles for online players (/bia titles)
     default: op
   authmebia.update:
     description: Receive in-game notifications about new AuthMeBia releases

@@ -180,6 +180,10 @@ public final class UpdateChecker implements Listener {
                         && !"release".equalsIgnoreCase(object.get("version_type").getAsString())) {
                     continue;
                 }
+                if (object.has("status") && !object.get("status").isJsonNull()
+                        && !"listed".equalsIgnoreCase(object.get("status").getAsString())) {
+                    continue;
+                }
                 if (!object.has("version_number") || object.get("version_number").isJsonNull()) continue;
                 String version = object.get("version_number").getAsString();
                 if (version == null || version.isBlank()) continue;

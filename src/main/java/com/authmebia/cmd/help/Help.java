@@ -23,6 +23,10 @@ public final class Help {
         if (sender.hasPermission("authmebia.config")) {
             sb.append(line("/bia config", "Edit config.yml in a dialog"));
         }
+        if (sender.hasPermission("authmebia.titles")) {
+            sb.append(line("/bia titles <title> <player> show [seconds]",
+                    "Preview a custom title for an online player"));
+        }
         if (op) {
             sb.append(line("/bia debug <feature> <true|false|show>", "Test a feature (OP only)"));
             sb.append(note("  Features: captcha, email, register, login, recover, rule"));

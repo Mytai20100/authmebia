@@ -29,7 +29,8 @@ lang: en
 bstats: true
 
 # Check Modrinth for a newer AuthMeBia release at startup and when a player
-# with authmebia.update (OP by default) joins. Outdated consoles get a warning;
+# with authmebia.update (OP by default) joins. Only published versions with
+# version_type: release are considered. Outdated consoles get a warning;
 # those players get a clickable chat message. Enabling this after startup
 # requires a restart; disabling it takes effect on /bia reload.
 update_checker: true
@@ -219,8 +220,25 @@ dialog:
     password_label: "Password"
     # Label for the confirm-password input field.
     confirm_password_label: "Confirm Password"
+    # If true, ask for an email during registration and store it in AuthMe as
+    # already verified, without sending a code or showing the verify dialog.
+    # This works even when email.enabled is false and takes precedence over the
+    # normal email verification flow when both are enabled. Requires AuthMe
+    # email/datasource support; otherwise the field is hidden and a warning is
+    # logged. Only applies to auth_mode: password (PIN/slider have no text field).
+    email_add_nonverify: false
     # Sound played when clicking the Register/Submit button.
     submit_sound: ""
+
+    # Optional title sequence played after this dialog succeeds (post-join
+    # only). Entries are defined under custom_titles: and referenced in order
+    # with <titles:name>, e.g. "<titles:hello> <titles:welcome>".
+    titles_scripts: ""
+    # Event(s) that allow titles_scripts to play. One value or a list:
+    #   is_registed, is_login, is_logout, is_rejoin, is_firstjoin,
+    #   is_recover
+    # Empty list defaults to is_registed.
+    titles_trigger: []
 
   login:
     # Title shown at the top of the login dialog. Place <icons:name>
@@ -234,14 +252,24 @@ dialog:
     # Sound played when clicking the Login/Submit button.
     submit_sound: ""
 
+    # Optional title sequence played after this dialog succeeds (post-join
+    # only). Entries are defined under custom_titles: and referenced in order
+    # with <titles:name>, e.g. "<titles:hello> <titles:welcome>".
+    titles_scripts: ""
+    # Event(s) that allow titles_scripts to play. One value or a list:
+    #   is_registed, is_login, is_logout, is_rejoin, is_firstjoin,
+    #   is_recover
+    # Empty list defaults to is_login.
+    titles_trigger: []
+
     forgot_password:
       # Master switch for the self-service "Forgot Password?" button on the
-      # login dialog. Requires email verification to be usable: the flow
-      # looks up the email already stored on the account (set during
-      # registration when email.enabled is true) and emails a reset code to
-      # it via the same AuthMe SMTP settings used by email.* above. If the
-      # account has no email on file, the player is told to contact an admin
-      # instead, and nothing is sent.
+      # login dialog. Requires an email on the account: either verified during
+      # registration when email.enabled is true, or collected by
+      # dialog.register.email_add_nonverify. The reset code is sent via the
+      # same AuthMe SMTP settings used by email.* above. If the account has no
+      # email on file, the player is told to contact an admin instead, and
+      # nothing is sent.
       enabled: false
 
       # Label of the "Forgot Password?" button shown next to Login.
@@ -377,11 +405,17 @@ rule:
   agree_sound: ""
 
 discord:
-  # If true, sends a Discord webhook notification (e.g. on player join).
+  # If true, sends a Discord webhook notification when a player registers.
   enabled: false
 
   # Discord webhook URL to send notifications to. Required if enabled is true.
+  # Must be an https URL.
   webhook_url: ""
+
+  # Message sent when a player registers, including registrations performed
+  # through AuthMe's own /authme register command. {player} is replaced.
+  # If welcome_image.enabled is true, this is used as the image caption.
+  message: "**{player}** has registered."
 
 welcome_image:
   # If true, sends a welcome image to the player (see welcome.json for the
@@ -512,6 +546,16 @@ recover:
   # Sound played when clicking the Set Password button.
   submit_sound: ""
 
+  # Optional title sequence played after a successful reset (post-join only).
+  # Entries are defined under custom_titles: and referenced in order with
+  # <titles:name>, e.g. "<titles:hello> <titles:welcome>".
+  titles_scripts: ""
+  # Event(s) that allow titles_scripts to play. One value or a list:
+  #   is_registed, is_login, is_logout, is_rejoin, is_firstjoin,
+  #   is_recover
+  # Empty list uses this section's default: is_recover after a reset.
+  titles_trigger: []
+
   # Message sent to the player (chat) on successful reset.
   # Supports MiniMessage and {player}.
   success_message: "<green>Password updated successfully.</green>"
@@ -567,6 +611,9 @@ email:
   #
   # Only applies to auth_mode: password (the email field sits under the password
   # input). PIN/slider modes have no text field and are unaffected.
+  #
+  # For asking for an email during registration without verification, see
+  # dialog.register.email_add_nonverify above.
   enabled: false
 
   # Number of digits in the emailed verification code. Valid range: 4-8.
@@ -731,6 +778,34 @@ custom_icons:
   #   width: 16
   #   height: 16
 
+# Named titles/actionbars that can be played as a sequence by the dialog
+# sections below. Each entry is keyed by its own name (the part after
+# "titles:" in a <titles:name> reference) and supports:
+#   title     - main title line, full MiniMessage + {player}
+#   subtitle  - subtitle line, full MiniMessage + {player}
+#   actionbar - action bar text, full MiniMessage + {player}
+#   delay     - how long this entry stays visible, in seconds (default 3;
+#               valid range: 0.1-60). The next entry starts after this delay.
+#
+# A sequence is written as references in order, for example:
+#   titles_scripts: "<titles:hello> <titles:welcome>"
+# which shows "hello" first and then "welcome". Only post-join triggers are
+# supported; pre-join dialogs never play titles because the client is still
+# in the configuration phase.
+# Preview one entry in-game (target must be online):
+#   /bia titles <title> <player> show [seconds]
+custom_titles:
+  hello:
+    title: "<gold>Hello, {player}!</gold>"
+    subtitle: "<gray>Welcome to the server.</gray>"
+    actionbar: ""
+    delay: 3
+  welcome:
+    title: "<gradient:gold:yellow>Welcome!</gradient>"
+    subtitle: "<white>Have fun and play fair.</white>"
+    actionbar: "<yellow>Read /rules before playing.</yellow>"
+    delay: 3
+
 # Custom dialog screens — a mini-framework for showing fully custom dialogs.
 #
 # Show a screen manually: /bia screen <id> [player]
@@ -792,13 +867,19 @@ custom_icons:
 # Use {player} in title, content, and button values/labels as a placeholder.
 custom_screens:
   - id: example
-    enabled: true
+    enabled: false
     title: "<icons:trial_key> <gold>Server Notice</gold>"
     content: "<gray>Welcome to the server, <yellow>{player}</yellow>!\nHave fun playing.</gray>"
     allow_close: true
     button_width: 200
     trigger: postjoin
     sound_on_show: ""
+    # Optional title sequence shown with this screen. Post-join only; ignored
+    # for trigger: prejoin. Reference entries with <titles:name>.
+    titles_scripts: ""
+    # allowed: is_registed, is_login, is_rejoin, is_firstjoin.
+    # is_logout is dialog-only because custom screens are not shown on logout.
+    titles_trigger: []
     checkbox_label: "<gray>Don't show this again</gray>"
     checkbox_action: close
     buttons:
@@ -904,4 +985,4 @@ ip_ban:
   # The last value is reused for any further offense beyond the list.
   ban_durations_seconds: [600, 1800, 3600, 86400]
 
-config_version: 3
+config_version: 4

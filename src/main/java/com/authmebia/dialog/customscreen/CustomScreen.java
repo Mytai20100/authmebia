@@ -2,8 +2,10 @@ package com.authmebia.dialog.customscreen;
 
 import com.authmebia.AuthMeBia;
 import com.authmebia.cfg.Cfg;
+import com.authmebia.cfg.TitleScript;
 import com.authmebia.dialog.Dialoglib;
 import com.authmebia.dialog.util.IconSpec;
+import com.authmebia.dialog.util.Util;
 import com.authmebia.service.ConnectionState;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.dialog.Dialog;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressWarnings("UnstableApiUsage")
 public record CustomScreen(
@@ -37,7 +40,8 @@ public record CustomScreen(
         String soundOnShow,
         String iconName,
         Component checkboxLabel,
-        CheckboxAction checkboxAction
+        CheckboxAction checkboxAction,
+        TitleScript titleScript
 ) {
 
     public enum Trigger {
@@ -95,7 +99,7 @@ public record CustomScreen(
 
     public static void showCustomScreen(Player player, com.authmebia.dialog.customscreen.CustomScreen screen,
                                         String playerName, Runnable afterDismiss) {
-        if (!screen.enabled()) return;
+        if (!screen.enabled() || player == null || !player.isOnline()) return;
         UUID uuid = player.getUniqueId();
         try {
             if (screen.soundOnShow() != null) {
@@ -113,6 +117,7 @@ public record CustomScreen(
                         .build());
             }
 
+            playTitles(player, screen);
             IconTitle iconTitle = resolveIcon(screen, playerName);
             player.showDialog(Dialog.create(d -> d
                     .empty()
@@ -153,7 +158,32 @@ public record CustomScreen(
         } catch (NoClassDefFoundError ignored) {}
     }
 
+    private static void playTitles(Player player, CustomScreen screen) {
+        TitleScript script = screen.titleScript();
+        if (script == null || script.isEmpty() || !player.isOnline()) return;
+        AuthMeBia plugin = AuthMeBia.get();
+        if (plugin == null) return;
+        com.authmebia.AuthMe auth = plugin.authMeListener();
+        if (auth == null || !auth.isAuthenticated(player)) return;
+        java.util.Set<String> triggers = new java.util.HashSet<>();
+        triggers.add("is_login");
+        if (auth.isFirstJoinSession(player.getUniqueId())) {
+            triggers.add("is_firstjoin");
+        } else {
+            triggers.add("is_rejoin");
+        }
+        if (auth.wasRegisteredThisSession(player.getUniqueId())) {
+            triggers.add("is_registed");
+        }
+        plugin.titles().play(player, script, triggers);
+    }
+
     private static final String DISMISS_INPUT_KEY = "dismiss_forever";
+
+    @FunctionalInterface
+    private interface CompletionAwareAction {
+        void run(DialogResponseView response, Audience audience, Runnable completion);
+    }
 
     private static List<DialogInput> checkboxInputs(com.authmebia.dialog.customscreen.CustomScreen screen) {
         if (screen.checkboxLabel() == null) return List.of();
@@ -164,30 +194,44 @@ public record CustomScreen(
 
     private static DialogActionCallback dismissAwareCallback(
             com.authmebia.dialog.customscreen.CustomScreen screen, UUID uuid,
-            DialogActionCallback inner, CountDownLatch latchOrNull, Runnable afterDismiss) {
+            CompletionAwareAction action, CountDownLatch latchOrNull, Runnable afterDismiss) {
         return (DialogResponseView r, Audience a) -> {
+            AtomicBoolean completed = new AtomicBoolean();
+            Runnable completion = () -> {
+                if (!completed.compareAndSet(false, true)) return;
+                if (latchOrNull != null) latchOrNull.countDown();
+                runAfterDismiss(afterDismiss);
+            };
             try {
                 if (screen.checkboxAction() == CheckboxAction.CLOSE && screen.checkboxLabel() != null) {
                     Boolean checked = r.getBoolean(DISMISS_INPUT_KEY);
                     if (Boolean.TRUE.equals(checked)) {
-                        AuthMeBia.get().screenDismissStore().markDismissed(uuid, screen.id());
+                        AuthMeBia plugin = AuthMeBia.get();
+                        if (plugin != null) plugin.screenDismissStore().markDismissed(uuid, screen.id());
                     }
                 }
-                if (inner != null) {
-                    Dialoglib.runCallback(inner, r, a);
+                if (action == null) {
+                    completion.run();
+                } else {
+                    action.run(r, a, completion);
                 }
-            } finally {
-                if (latchOrNull != null) latchOrNull.countDown();
-                if (afterDismiss != null) {
-                    try {
-                        afterDismiss.run();
-                    } catch (Throwable t) {
-                        AuthMeBia.get().getLogger().warning(
-                                "Custom screen sequence failed: " + t.getMessage());
-                    }
-                }
+            } catch (Throwable t) {
+                completion.run();
+                throw t;
             }
         };
+    }
+
+    private static void runAfterDismiss(Runnable afterDismiss) {
+        if (afterDismiss == null) return;
+        try {
+            afterDismiss.run();
+        } catch (Throwable t) {
+            AuthMeBia plugin = AuthMeBia.get();
+            if (plugin != null) {
+                plugin.getLogger().warning("Custom screen sequence failed: " + t.getMessage());
+            }
+        }
     }
 
     private record IconTitle(Component title, DialogBody leadingBody) {}
@@ -233,31 +277,57 @@ public record CustomScreen(
                 case COMMAND -> ActionButton.builder(btn.label())
                         .width(btn.width())
                         .action(DialogAction.customClick(
-                                dismissAwareCallback(screen, uuid, (r, a) -> {
+                                dismissAwareCallback(screen, uuid, (r, a, completion) -> {
                                     if (btn.sound() != null && a instanceof Player p) Dialoglib.playSound(p, btn.sound());
-                                    if (a instanceof Player p && !value.isBlank()) {
-                                        p.performCommand(value.startsWith("/") ? value.substring(1) : value);
+                                    if (!(a instanceof Player p) || value.isBlank()) {
+                                        completion.run();
+                                        return;
                                     }
+                                    String command = value.startsWith("/") ? value.substring(1) : value;
+                                    boolean scheduled = Util.runOnMain(p, () -> {
+                                        try {
+                                            if (p.isOnline()) p.performCommand(command);
+                                        } finally {
+                                            completion.run();
+                                        }
+                                    });
+                                    if (!scheduled) completion.run();
                                 }, latchOrNull, afterDismiss),
                                 ClickCallback.Options.builder().build()))
                         .build();
                 case CONSOLE -> ActionButton.builder(btn.label())
                         .width(btn.width())
                         .action(DialogAction.customClick(
-                                dismissAwareCallback(screen, uuid, (r, a) -> {
+                                dismissAwareCallback(screen, uuid, (r, a, completion) -> {
                                     if (btn.sound() != null && a instanceof Player p) Dialoglib.playSound(p, btn.sound());
-                                    if (!value.isBlank()) {
-                                        AuthMeBia.get().getServer().dispatchCommand(
-                                                AuthMeBia.get().getServer().getConsoleSender(),
-                                                value.startsWith("/") ? value.substring(1) : value);
+                                    if (value.isBlank()) {
+                                        completion.run();
+                                        return;
                                     }
+                                    String command = value.startsWith("/") ? value.substring(1) : value;
+                                    boolean scheduled = Util.runGlobal(() -> {
+                                        try {
+                                            AuthMeBia plugin = AuthMeBia.get();
+                                            if (plugin != null) plugin.getServer().dispatchCommand(
+                                                    plugin.getServer().getConsoleSender(), command);
+                                        } finally {
+                                            completion.run();
+                                        }
+                                    });
+                                    if (!scheduled) completion.run();
                                 }, latchOrNull, afterDismiss),
                                 ClickCallback.Options.builder().build()))
                         .build();
                 case CLOSE -> ActionButton.builder(btn.label())
                         .width(btn.width())
                         .action(DialogAction.customClick(
-                                dismissAwareCallback(screen, uuid, soundCb, latchOrNull, afterDismiss),
+                                dismissAwareCallback(screen, uuid, (r, a, completion) -> {
+                                    try {
+                                        Dialoglib.runCallback(soundCb, r, a);
+                                    } finally {
+                                        completion.run();
+                                    }
+                                }, latchOrNull, afterDismiss),
                                 ClickCallback.Options.builder().build()))
                         .build();
             });

@@ -71,6 +71,27 @@ All message values support:
 
 ---
 
+## Registration Email Without Verification
+
+Set `dialog.register.email_add_nonverify: true` to ask for an email on the
+password registration form. After registration succeeds, the address is stored
+directly on the AuthMe account and treated as verified: no code is sent and no
+verify dialog is shown.
+
+This is useful when you want an email on file for password recovery without
+enabling the full verification flow. It requires AuthMe email/datasource support;
+if that is unavailable, the field is hidden and a warning is logged at startup.
+
+- Works even when `email.enabled` is false.
+- Takes precedence over `email.enabled: true` when both are enabled.
+- Only applies to `auth_mode: password`; PIN/slider modes have no text field.
+- The email field is required and uses the same validation as normal
+  registration email verification.
+- AuthMe's SMTP settings must still be configured for players to use
+  "Forgot Password?", since reset codes are sent through AuthMe.
+
+---
+
 ## Password Recovery ("Forgot Password?")
 
 In addition to admin-forced recovery (`/bia recover`), players can reset their
@@ -79,11 +100,15 @@ own password from the login dialog itself, without any admin involvement.
 ### Requirements
 
 - `dialog.login.forgot_password.enabled: true` in `config.yml`.
-- The account must already have an email on file. This means `email.enabled`
-  must have been `true` at some point so the player verified an email during
-  registration (see the `email` section of `config.yml`). Accounts registered
-  before email verification was enabled, or that skipped it, have no email on
-  file.
+- The account must already have an email on file. This can happen in two ways:
+  - `email.enabled: true`, where the player verifies a code during
+    registration; or
+  - `dialog.register.email_add_nonverify: true`, where the player enters an
+    email during registration and it is stored as already verified without a
+    code. This works even when `email.enabled` is false.
+
+  Accounts registered before either option was enabled, or that skipped the
+  email field, have no email on file.
 - AuthMe's own SMTP settings (`Email.mailAccount`, `Email.mailPassword`,
   `Email.mailSMTP`) must be configured, since the reset code is sent through
   the same `EmailService` used by registration email verification.
@@ -280,6 +305,78 @@ the surrounding text or the dialog itself.
 
 ---
 
+## Custom Titles (`<titles:name>`)
+
+`custom_titles:` (below `custom_icons:`) defines named title/actionbar
+entries. Each entry can set `title`, `subtitle`, `actionbar`, and `delay`
+(seconds). `{player}` and the usual MiniMessage tags, including
+`<icons:name>`, work in all three text fields.
+
+```yaml
+custom_titles:
+  hello:
+    title: "<gold>Hello, {player}!</gold>"
+    subtitle: "<gray>Welcome to the server.</gray>"
+    actionbar: ""
+    delay: 3
+  welcome:
+    title: "<gradient:gold:yellow>Welcome!</gradient>"
+    subtitle: "<white>Have fun and play fair.</white>"
+    actionbar: "<yellow>Read /rules before playing.</yellow>"
+    delay: 3
+```
+
+### Previewing custom titles (`/bia titles`)
+
+Preview a single entry in-game without changing `config.yml`:
+
+```
+/bia titles <title> <player> show [seconds]
+/bia titles welcome mytai show 1
+```
+
+The target player must be online. `[seconds]` overrides that entry's `delay`
+for the preview only (0.1-60); without it, the configured delay is used.
+Previewing cancels any title sequence currently playing for that player, so
+the requested title appears immediately. Requires `authmebia.titles`
+(default: OP).
+
+A sequence is a string or list of `<titles:name>` references. Entries play
+in order; each entry stays visible for its own `delay` before the next one
+starts:
+
+```yaml
+titles_scripts: "<titles:hello> <titles:welcome>"
+# or:
+titles_scripts:
+  - "<titles:hello>"
+  - "<titles:welcome>"
+```
+
+`titles_scripts` and `titles_trigger` are supported in
+`dialog.login`, `dialog.register`, `recover`, and each `custom_screens`
+entry. `titles_trigger` accepts one event name or a list:
+
+| Trigger | When it fires |
+|---------|---------------|
+| `is_registed` | The player successfully registers (including via AuthMe's own command) |
+| `is_login` | The player successfully logs in |
+| `is_recover` | A flagged password reset completed successfully |
+| `is_logout` | The player logs out while still connected; the login dialog is re-shown. Only `dialog.login`, `dialog.register`, and `recover` receive this trigger; custom screens are not shown on logout. |
+| `is_rejoin` | A returning player successfully logs in |
+| `is_firstjoin` | The player's first join successfully authenticates |
+
+An empty/omitted `titles_trigger` uses the section's default event:
+`is_registed` for `dialog.register`, `is_login` for `dialog.login`, and
+`is_recover` for `recover`. For a custom screen, an empty/omitted trigger means the script
+plays whenever that screen is shown post-join. `is_logout` is not available
+for custom screens because they are not shown on logout; put logout titles in
+`dialog.login` instead. Titles are only played after the player has joined the
+server; pre-join dialogs never play them because the client is still in the
+configuration phase.
+
+---
+
 ## Custom Screens
 
 AuthMeBia includes a mini-framework for defining fully custom dialog screens that
@@ -323,6 +420,8 @@ custom_screens:
 | `button_width` | int | `dialog.button_width` | Default width for buttons in this screen |
 | `trigger` | string | `command` | When the screen auto-shows (see below) |
 | `sound_on_show` | string | `""` | Sound played when the screen opens (in-game only) |
+| `titles_scripts` | string/list | none | Optional `<titles:name>` sequence shown with this screen. Ignored for `trigger: prejoin`. |
+| `titles_trigger` | string/list | none | Post-join event(s) that allow `titles_scripts` to play. `is_logout` is dialog-only; see Custom Titles above. |
 | `icon` | string | none | Name of an `item`-type entry under `custom_icons:` in `config.yml`, shown as a small icon above the dialog's content. Only `item`-type icons are usable here — `sprite`/`player_head` icons go inline in `title`/`content` instead, via `<icons:name>`. |
 | `checkbox_label` | string | none | If set, shows a checkbox with this label (MiniMessage + `{player}`). Leave unset for no checkbox. |
 | `checkbox_action` | string | `show` | What ticking `checkbox_label` does when the player dismisses the screen — see below. Only takes effect for `postjoin`/`prejoin` triggers; `/bia screen <id>` always shows the screen regardless. |
@@ -363,7 +462,8 @@ list.
 
 - `prejoin`: every eligible screen runs one at a time during the pre-spawn
   phase. The next screen starts only after the current screen receives a
-  button click, and the player cannot spawn until the sequence finishes.
+  button click (a 30-second safety timeout advances the sequence if the client
+  never responds), and the player cannot spawn until the sequence finishes.
 - `postjoin`: every eligible screen is queued after authentication and spawn.
   The next screen opens after the current screen receives a button click, so
   multiple postjoin screens no longer replace each other or get skipped.
@@ -575,7 +675,7 @@ rather than deleted, purely as a safety margin.
 ## Welcome (`welcome.json`)
 
 The welcome is generated when a player registers and (optionally) posted
-to wedhook(discord). It is built from canvas in `welcome.json`.
+to a Discord webhook. It is built from canvas in `welcome.json`.
 
 Enable the feature in `config.yml`:
 
@@ -585,7 +685,19 @@ welcome_image:
 ```
 
 If `discord.enabled` is `true` and a `discord.webhook_url` is set, the image is
-also sent to that webhook.
+also sent to that webhook. Webhook URLs must use `https`. When `welcome_image.enabled` is false, Discord still
+receives the text from `discord.message`, so registrations performed through
+AuthMe's own `/authme register` command are reported too.
+
+```yaml
+discord:
+  enabled: true
+  webhook_url: "https://discord.com/api/webhooks/..."
+  message: "**{player}** has registered."
+```
+
+`discord.message` supports `{player}` and is used as the image caption when
+`welcome_image.enabled` is true.
 
 ### fields
 

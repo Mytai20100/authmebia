@@ -172,6 +172,10 @@ public class Cfg {
         return config.getString("dialog.register.confirm_password_label", "Confirm Password");
     }
 
+    public boolean registerEmailAddNonVerify() {
+        return config.getBoolean("dialog.register.email_add_nonverify", false);
+    }
+
     public String loginPasswordLabel() {
         return config.getString("dialog.login.password_label", "Password");
     }
@@ -329,6 +333,12 @@ public class Cfg {
 
     public String discordWebhook() {
         return config.getString("discord.webhook_url", "");
+    }
+
+    public String discordMessage(String playerName) {
+        String raw = config.getString("discord.message", "**{player}** has registered.");
+        if (raw == null) return "";
+        return replacePlayer(raw, playerName);
     }
 
     public boolean welcomeImageEnabled() {
@@ -665,6 +675,44 @@ public class Cfg {
         return config.getString("totp_2fa.wrong_code_error", "Invalid code");
     }
 
+    // Custom titles
+
+    public TitleScript titleScript(String sectionPath) {
+        return TitleScript.parse(
+                config.get(sectionPath + ".titles_scripts"),
+                config.get(sectionPath + ".titles_trigger"));
+    }
+
+    public TitleScript titleScript(Map<?, ?> map) {
+        return TitleScript.parse(map.get("titles_scripts"), map.get("titles_trigger"));
+    }
+
+    public List<String> customTitleNames() {
+        org.bukkit.configuration.ConfigurationSection section =
+                config.getConfigurationSection("custom_titles");
+        if (section == null) return List.of();
+        return new ArrayList<>(section.getKeys(false));
+    }
+
+    public com.authmebia.notifications.CustomTitle customTitle(String name) {
+        if (name == null || name.isBlank()) return null;
+        org.bukkit.configuration.ConfigurationSection section =
+                config.getConfigurationSection("custom_titles." + name);
+        if (section == null) return null;
+
+        String playerName = PLAYER_CONTEXT.get();
+        Component title = parse(replacePlayer(section.getString("title", ""), playerName));
+        Component subtitle = parse(replacePlayer(section.getString("subtitle", ""), playerName));
+        Component actionbar = parse(replacePlayer(section.getString("actionbar", ""), playerName));
+        if (title == null && subtitle == null && actionbar == null) return null;
+
+        double seconds = section.getDouble("delay", 3.0);
+        if (!Double.isFinite(seconds)) seconds = 3.0;
+        seconds = Math.max(0.1, Math.min(60.0, seconds));
+        long delayTicks = Math.max(1L, Math.round(seconds * 20.0));
+        return new com.authmebia.notifications.CustomTitle(name, title, subtitle, actionbar, delayTicks);
+    }
+
     // Custom screens
 
     public CustomScreen customScreen(String id) {
@@ -724,9 +772,10 @@ public class Cfg {
         }
         CustomScreen.CheckboxAction checkboxAction =
                 CustomScreen.CheckboxAction.parse(readString(map, "checkbox_action", "show"));
+        TitleScript titleScript = titleScript(map);
 
         return new CustomScreen(id, enabled, title, content, allowClose, defaultWidth, buttons, trigger, soundOnShow,
-                iconName, checkboxLabel, checkboxAction);
+                iconName, checkboxLabel, checkboxAction, titleScript);
     }
 
     // Custom icons
@@ -800,13 +849,11 @@ public class Cfg {
         if (input == null || input.isBlank()) return null;
         String withPapi = applyPlaceholderApiFromContext(input);
         String normalized = withPapi.replace("\\n", "\n");
-        String[] lines = normalized.split("\n", -1);
-        if (lines.length == 1) return MM.deserialize(lines[0], iconsTagResolver);
-        Component result = MM.deserialize(lines[0], iconsTagResolver);
-        for (int i = 1; i < lines.length; i++) {
-            result = result.append(Component.newline()).append(MM.deserialize(lines[i], iconsTagResolver));
-        }
-        return result;
+        // Deserialize the whole string in one pass. Splitting on newlines and
+        // appending independently parsed lines breaks any tag that spans a
+        // line break (gradients, nested colors, etc.) and lets the first
+        // line's style bleed into later lines.
+        return MM.deserialize(normalized, iconsTagResolver);
     }
     private String applyPlaceholderApiFromContext(String input) {
         String playerName = PLAYER_CONTEXT.get();

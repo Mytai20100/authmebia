@@ -33,11 +33,30 @@ public final class Util {
                 ? player.getAddress().getAddress().getHostAddress() : null;
     }
 
-    public static void runOnMain(Player player, Runnable task) {
-        if (AuthMeBia.get().isFolia()) {
-            player.getScheduler().run(AuthMeBia.get(), t -> task.run(), null);
+    public static boolean runOnMain(Player player, Runnable task) {
+        AuthMeBia plugin = AuthMeBia.get();
+        if (plugin == null || player == null || task == null) return false;
+        if (plugin.isFolia()) {
+            player.getScheduler().run(plugin, t -> task.run(), null);
         } else {
-            AuthMeBia.get().getServer().getScheduler().runTask(AuthMeBia.get(), task);
+            plugin.getServer().getScheduler().runTask(plugin, task);
         }
+        return true;
+    }
+
+    /**
+     * Runs a server command dispatch on the global region thread. Player
+     * commands must use {@link #runOnMain(Player, Runnable)} instead because
+     * Folia requires them on the owning player's region.
+     */
+    public static boolean runGlobal(Runnable task) {
+        AuthMeBia plugin = AuthMeBia.get();
+        if (plugin == null || task == null) return false;
+        if (plugin.isFolia()) {
+            plugin.getServer().getGlobalRegionScheduler().run(plugin, t -> task.run());
+        } else {
+            plugin.getServer().getScheduler().runTask(plugin, task);
+        }
+        return true;
     }
 }

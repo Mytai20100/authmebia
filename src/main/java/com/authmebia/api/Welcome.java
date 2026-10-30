@@ -25,10 +25,23 @@ public class Welcome {
         this.plugin = plugin;
     }
     public void handle(Player player) {
-        if (!plugin.cfg().welcomeImageEnabled()) return;
+        boolean imageEnabled = plugin.cfg().welcomeImageEnabled();
+        boolean discordEnabled = plugin.cfg().discordEnabled();
+        if (!imageEnabled) {
+            if (discordEnabled) sendDiscordMessage(player);
+            return;
+        }
         try {
             File jsonFile = new File(plugin.getDataFolder(), "welcome.json");
-            if (!jsonFile.exists()) return;
+            if (!jsonFile.exists()) {
+                if (discordEnabled) {
+                    plugin.getLogger().warning("welcome.json is missing; falling back to the Discord text message");
+                    sendDiscordMessage(player);
+                } else {
+                    plugin.getLogger().warning("welcome.json is missing; skipping welcome image");
+                }
+                return;
+            }
             String raw = Files.readString(jsonFile.toPath());
             JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
             JsonObject sizeObj = root.getAsJsonObject("welcome_size");
@@ -58,16 +71,29 @@ public class Welcome {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ImageIO.write(canvas, "png", out);
             byte[] imageBytes = out.toByteArray();
-            if (plugin.cfg().discordEnabled()) {
+            if (discordEnabled) {
                 String webhook = plugin.cfg().discordWebhook();
                 if (!webhook.isEmpty()) {
-                    Discord.sendImage(plugin.httpClient(), webhook, imageBytes, "welcome_" + player.getName() + ".png", "");
+                    Discord.sendImage(plugin.httpClient(), webhook, imageBytes,
+                            "welcome_" + player.getName() + ".png",
+                            plugin.cfg().discordMessage(player.getName()));
                 }
             }
         } catch (Exception e) {
             plugin.getLogger().warning("Welcome image error: " + e.getMessage());
+            if (discordEnabled) sendDiscordMessage(player);
         }
     }
+    private void sendDiscordMessage(Player player) {
+        String webhook = plugin.cfg().discordWebhook();
+        if (webhook == null || webhook.isBlank()) return;
+        String message = plugin.cfg().discordMessage(player.getName());
+        if (message == null || message.isBlank()) return;
+        JsonObject payload = new JsonObject();
+        payload.addProperty("content", message);
+        Discord.send(plugin.httpClient(), webhook.trim(), payload.toString());
+    }
+
     private void drawLayer(Graphics2D g, JsonObject layer, Player player, int canvasW, int canvasH) {
         try {
             String name = layer.has("name") ? layer.get("name").getAsString() : "";

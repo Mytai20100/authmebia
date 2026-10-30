@@ -3,7 +3,7 @@
 
 # authmebia
 
-A addon for AuthMe Reloaded that replaces dialog-based login and register prompts of authme reloaded with dialog customizable.
+An addon for AuthMe Reloaded that replaces dialog-based login and register prompts of authme reloaded with dialog customizable.
 
 [GitHub](https://github.com/Mytai20100/authmebia)
 </div>
@@ -137,7 +137,8 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 - TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
 - Captcha dialog synced with AuthMe's captcha setting.But so bad if bot use old procotol bia cannot show captcha :D . ( Fun feature)
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
-- **"Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on authme (set during email-verified registration), sends a reset code to it through AuthMe's SMTP config, and |  once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
+- **Email without verification** (`dialog.register.email_add_nonverify`): asks for an email during registration and stores it on the AuthMe account as already verified, without sending a code or showing the verification dialog. Works even when `email.enabled` is false
+- **"Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on authme (set during email-verified registration or with `email_add_nonverify`), sends a reset code to it through AuthMe's SMTP config, and |  once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
 - Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online. The reset dialog now follows `auth_mode.mode` (password/PIN/slider), matching the register and login dialogs instead of always showing a text field
 - Server rules agreement checkbox shown to new players before their account is created
 - Login attempt limit with kick after too many wrong passwords
@@ -147,13 +148,14 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 **Notifications**
 - Custom notifications (`notifications.toasts`): show the small achievement popup in the corner of the screen on `first_register`, `first_login`, `first_message`, or `first_advancement`, with a configurable title, description, item icon, sound, and advancement frame (`task`/`goal`/`challenge`).
 - `/bia notifier <toast> <player> show [seconds]` lets an admin preview any configured toast on an online player without touching its persisted "already shown" state, so testing never affects whether it fires for real later
+- **Custom titles** (`custom_titles` + `<titles:name>`): define named title/subtitle/actionbar entries with their own delay, then play them from `titles_scripts` on login, register, recover, or custom screens. Use `/bia titles <title> <player> show [seconds]` to preview one entry on an online player; `[seconds]` optionally overrides its delay
 
 **Third-party item plugin integrations**
 - Optional, self-checking integrations with ItemsAdder, NexoMC, and Oraxen (`integrations.*`, all off by default). Each one only activates if the corresponding plugin is actually installed and its API is loadable; if it isn't, the integration quietly disables itself without affecting login/registration in any way
 
 **Admin tools**
 - Bypass list: players added with `/bia add` skip all dialogs of bia and fall back to AuthMe's own commands
-- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command. Screens with the same trigger run sequentially in config order: prejoin screens block until each server-side button click, and postjoin screens queue one after another instead of replacing each other; `open_url`/`copy` and ESC do not advance the queue. Screens can include an optional agreement checkbox (`checkbox_label`/`checkbox_action`) that permanently suppresses the screen for a player once ticked and dismissed; reset it with `/bia screen reset <player> [id]`
+- Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command. Screens with the same trigger run sequentially in config order: prejoin screens block until each server-side button click (with a 30-second safety timeout if the client never responds), and postjoin screens queue one after another instead of replacing each other; `open_url`/`copy` and ESC do not advance the queue. Screens can include an optional agreement checkbox (`checkbox_label`/`checkbox_action`) that permanently suppresses the screen for a player once ticked and dismissed; reset it with `/bia screen reset <player> [id]`
 - Debug commands: preview individual dialogs in-game without going through the full login flow
 - `/bia look <ip|player>` shows IPinfo data for an address or UUID/type information for a player name; the free IPinfo JSON endpoint works without configuration
 - `/bia settings` edits common options in category sub-dialogs and can reload after saving
@@ -182,6 +184,7 @@ A addon for AuthMe Reloaded that replaces dialog-based login and register prompt
 | `/bia screen reset <player> [id]` | OP | Reset a player's "closed forever" checkbox for a custom screen (omit `id` to reset all screens)             |
 | `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game                                                                                       |
 | `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state                  |
+| `/bia titles <title> <player> show [seconds]` | `authmebia.titles` | Preview a `custom_titles` entry on an online player; `[seconds]` optionally overrides its delay              |
 | `/bia look <ip\|player>` | `authmebia.look` | Show IP or player information                                                                               |
 | `/bia settings` | `authmebia.settings` | Edit common settings in a dialog                                                                            |
 | `/bia config` | `authmebia.config` | Edit config.yml in a dialog                                                                                 |
@@ -216,6 +219,13 @@ AuthMeBia also optionally bridges to Floodgate's API the same way used in the Au
 | `org.geysermc.floodgate.api.FloodgateApi` | Detect Floodgate/Bedrock connections |
 | `org.geysermc.floodgate.api.player.FloodgatePlayer` | Look up a Bedrock player's linked account |
 | `org.geysermc.floodgate.util.LinkedPlayer` | Read the verified linked Java UUID, if any |
+
+---
+
+# Credit:
+## [AuthMe/AuthMeReloaded](https://github.com/AuthMe/AuthMeReloaded)
+Behavioral inspiration for pre-join connection handling and session validation.
+The implementation in AuthMeBia is original and contains no AuthMeReloaded source code. :P
 
 ---
 
@@ -297,6 +307,8 @@ dialog:
   enabled: true
   menu: true
   min_protocol_version: 771
+  # Deprecated / no effect. Kept so existing configs do not error.
+  protocol_detect_wait_ms: 500
   button_width: 200
   # vertical (stacked) or horizontal (side by side)
   button_layout: vertical
@@ -304,20 +316,30 @@ dialog:
 
   register:
     title: "<icons:trial_key> <#4287f5>Create Account</#4287f5>"
-    content: ""
+    content: "<gray>Welcome, {player}! Please create a password to register.</gray>"
     password_label: "Password"
     confirm_password_label: "Confirm Password"
+    # Ask for an email during registration and store it as already verified.
+    # Works even when email.enabled is false.
+    email_add_nonverify: false
     submit_sound: ""
+    # Post-join title sequence and the events allowed to play it.
+    titles_scripts: ""
+    titles_trigger: []
 
   login:
     title: "<icons:trial_key> <gold>Login</gold>"
     content: "<gold>Welcome back, {player}!</gold>"
     password_label: "Password"
     submit_sound: ""
+    # Post-join title sequence and the events allowed to play it.
+    titles_scripts: ""
+    titles_trigger: []
 
     forgot_password:
       # Self-service password reset via the email already on file.
-      # Requires email.enabled so an email is stored on the account.
+      # Requires email.enabled or dialog.register.email_add_nonverify so an
+      # email is stored on the account.
       enabled: false
       button: "<yellow>Forgot Password?</yellow>"
       button_sound: ""
@@ -376,7 +398,10 @@ rule:
 
 discord:
   enabled: false
+  # Must be an https:// URL.
   webhook_url: ""
+  # Also sent as text when welcome_image.enabled is false.
+  message: "**{player}** has registered."
 
 welcome_image:
   enabled: false
@@ -427,6 +452,9 @@ recover:
   confirm_password_label: "Confirm password"
   submit_button: "<green>Set Password</green>"
   submit_sound: ""
+  # Post-join title sequence and the events allowed to play it.
+  titles_scripts: ""
+  titles_trigger: []
   success_message: "<green>Password updated successfully.</green>"
   mismatch_message: "<red>Passwords do not match. Try again.</red>"
 
@@ -444,6 +472,8 @@ premium:
   mismatch_message: "<red>Passwords do not match. Try again.</red>"
 
 email:
+  # For email capture during registration without verification, see
+  # dialog.register.email_add_nonverify above.
   enabled: false
   code_length: 6
   resend_cooldown: 60
@@ -471,29 +501,47 @@ totp_2fa:
   submit_sound: ""
   wrong_code_error: "Invalid code"
 
+# Named title/actionbar entries referenced as <titles:name>. Each entry
+# supports title, subtitle, actionbar, and delay (seconds, 0.1-60).
+# Preview one in-game with: /bia titles <title> <player> show [seconds]
+custom_titles:
+  hello:
+    title: "<gold>Hello, {player}!</gold>"
+    subtitle: "<gray>Welcome to the server.</gray>"
+    actionbar: ""
+    delay: 3
+  welcome:
+    title: "<gradient:gold:yellow>Welcome!</gradient>"
+    subtitle: "<white>Have fun and play fair.</white>"
+    actionbar: "<yellow>Read /rules before playing.</yellow>"
+    delay: 3
+
 # Custom dialog screens. Show with: /bia screen <id> [player]
 # Reset a player's "closed forever" checkbox: /bia screen reset <player> [id]
 # Button actions: close, open_url, copy, command, console
 custom_screens:
   - id: example
-    enabled: true
+    enabled: false
     title: "<icons:trial_key> <gold>Server Notice</gold>"
-    content: "<gray>Welcome to the server, {player}!\nHave fun playing.</gray>"
+    content: "<gray>Welcome to the server, <yellow>{player}</yellow>!\nHave fun playing.</gray>"
     allow_close: true
     button_width: 200
     # command (default), postjoin, or prejoin -- see doc/README.md
-    trigger: command
+    trigger: postjoin
     sound_on_show: ""
+    # Optional title sequence for this screen (post-join only).
+    titles_scripts: ""
+    titles_trigger: []
     # Optional agreement checkbox -- see doc/README.md for checkbox_action
     checkbox_label: "<gray>Don't show this again</gray>"
     checkbox_action: close
     buttons:
       - label: "<green>OK</green>"
         action: close
-        sound: ""
+        sound: "minecraft:ui.button.click"
       - label: "<#5865F2>Discord</#5865F2>"
         action: open_url
-        value: "https://discord.gg/linux"
+        value: "https://discord.gg/abc"
         width: 200
 
 ip_ban:
@@ -546,7 +594,7 @@ custom_icons:
     atlas: items
     sprite: item/barrier
 
-config_version: 3
+config_version: 4
 ```
 
 </details>
