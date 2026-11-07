@@ -565,6 +565,11 @@ recover:
   mismatch_message: "<red>Passwords do not match. Try again.</red>"
 
 premium:
+  # Master switch for the password-set dialog on first auto-login.
+  # When set to false, auto-logged-in players will not be prompted to set
+  # a custom password, keeping the internally generated placeholder password.
+  enabled: true
+
   # Password-set dialog shown exactly once, the first time a player joins
   # via auto.premium_autologin or auto.bedrock_autologin. AuthMe still needs
   # a password on file for the account internally; this dialog lets the

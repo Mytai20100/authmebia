@@ -946,10 +946,12 @@ public class AuthMe implements Listener {
             }
         }
 
-        runLater(player, () -> doForceLogin(player, false, () ->
+        runLater(player, () -> doForceLogin(player, false, () -> {
+            if (!registered && resolveEffectiveCfg(player.getUniqueId()).premiumResetEnabled()) {
                 runOnPlayer(player, () -> com.authmebia.dialog.premium.Premium.showResetIngame(
-                        player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}))
-        ), 5L);
+                        player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}));
+            }
+        }), 5L);
     }
     public boolean isSessionEligibleByLastLogin(String name, String ip) {
         ensureAuthMeConfigFresh();
