@@ -125,6 +125,16 @@ public final class Lang {
         return parse("disconnect.ip_banned", player, ip);
     }
 
+    public Component disconnectMaxRegistrationExceeded(String ip, int max, int count, String names) {
+        String raw = resolve("disconnect.max_registration_exceeded",
+                "<red>You have exceeded the maximum number of registrations ({count}/{max} {names}).</red>");
+        raw = raw.replace("{count}", String.valueOf(count))
+                .replace("{max}", String.valueOf(max))
+                .replace("{names}", names == null ? "" : names);
+        raw = applyPlaceholders(raw, null, ip);
+        return MM.deserialize(raw);
+    }
+
     public String errorWrongPassword() {
         return raw("error.wrong_password", "Wrong password");
     }

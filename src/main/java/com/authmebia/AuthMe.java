@@ -58,10 +58,12 @@ public class AuthMe implements Listener {
     private Object dataSource;
     private Method dsGetAuth;
     private Method dsHasSession;
+    private Method dsGetAllAuthsByIp;
     private Method authIsPremium;
     private Method authGetPremiumUuid;
     private Method authGetEmail;
     private volatile boolean cachedPremiumEnabled = false;
+    private volatile int cachedMaxRegPerIp = 0;
     private Object playerCache;
     private Method pcIsAuthenticatedByName;
     private Object emailService;
@@ -141,6 +143,7 @@ public class AuthMe implements Listener {
             Class<?> dsClass = Class.forName("fr.xephi.authme.datasource.DataSource");
             dsGetAuth = dsClass.getMethod("getAuth", String.class);
             dsHasSession = dsClass.getMethod("hasSession", String.class);
+            dsGetAllAuthsByIp = dsClass.getMethod("getAllAuthsByIp", String.class);
             Class<?> authClass = Class.forName("fr.xephi.authme.data.auth.PlayerAuth");
             authIsPremium = authClass.getMethod("isPremium");
             authGetPremiumUuid = authClass.getMethod("getPremiumUuid");
@@ -213,6 +216,7 @@ public class AuthMe implements Listener {
             cachedAuthMeCaptchaEnabled = false;
             cachedPremiumEnabled = false;
             cachedSessionsEnabled = false;
+            cachedMaxRegPerIp = 0;
             cachedConfigLastModified = -1L;
             return;
         }
@@ -223,6 +227,7 @@ public class AuthMe implements Listener {
             cachedAuthMeCaptchaEnabled = false;
             cachedPremiumEnabled = false;
             cachedSessionsEnabled = false;
+            cachedMaxRegPerIp = 0;
             cachedConfigLastModified = -1L;
             return;
         }
@@ -240,6 +245,7 @@ public class AuthMe implements Listener {
             cachedSessionTimeoutMinutes = yaml.getLong("settings.sessions.timeout", 10);
             cachedAuthMeCaptchaEnabled = yaml.getBoolean("Security.captcha.useCaptcha", false);
             cachedPremiumEnabled = yaml.getBoolean("settings.enablePremium", false);
+            cachedMaxRegPerIp = yaml.getInt("settings.restrictions.maxRegPerIp", 1);
             cachedConfigLastModified = file.lastModified();
         } catch (Exception e) {
             plugin.getLogger().warning("Could not read AuthMe config.yml: " + e.getMessage());
@@ -345,6 +351,20 @@ public class AuthMe implements Listener {
                 if (password == null) {
                     connection.disconnect(lang.disconnectRegistrationCancelled(ip));
                     return;
+                }
+                // Mirror of AuthMe's PaperDialogFlowListener check: same
+                // settings.restrictions.maxRegPerIp, same loopback exemption.
+                // authme.allowmultipleaccounts cannot be checked on a
+                // configuration connection, so the check is also repeated
+                // later at actual account creation where a Player exists.
+                ensureAuthMeConfigFresh();
+                if (cachedMaxRegPerIp > 0 && ip != null && !isLoopbackIp(ip)) {
+                    java.util.List<String> other = getAuthsByIp(ip);
+                    if (other.size() >= cachedMaxRegPerIp) {
+                        connection.disconnect(lang.disconnectMaxRegistrationExceeded(ip, cachedMaxRegPerIp,
+                                other.size(), String.join(", ", other)));
+                        return;
+                    }
                 }
                 session.setRegisterPassword(password);
 
@@ -467,8 +487,15 @@ public class AuthMe implements Listener {
                 runAsync(() -> {
                     if (doLogin) {
                         registerAndLoginNumeric(player, pendingPassword);
-                    } else if (!registerPlayerNoValidation(player.getName(), pendingPassword)) {
-                        plugin.getLogger().warning("registerPlayer (PIN/slider) failed for " + player.getName());
+                    } else {
+                        String kick = checkMaxRegistrationPerIp(player.getName(), Util.ipOf(player), player);
+                        if (kick != null) {
+                            player.kick(net.kyori.adventure.text.Component.text(kick));
+                            return;
+                        }
+                        if (!registerPlayerNoValidation(player.getName(), pendingPassword)) {
+                            plugin.getLogger().warning("registerPlayer (PIN/slider) failed for " + player.getName());
+                        }
                     }
                 });
             } else if (doLogin) {
@@ -677,12 +704,7 @@ public class AuthMe implements Listener {
                 future.complete(false);
             }
         };
-        if (plugin.isFolia()) {
-            plugin.getServer().getAsyncScheduler().runDelayed(plugin, t -> timeout.run(), timeoutMs, TimeUnit.MILLISECONDS);
-        } else {
-            long delayTicks = Math.max(1L, timeoutMs / 50L);
-            plugin.getServer().getScheduler().runTaskLater(plugin, timeout, delayTicks);
-        }
+        plugin.scheduler().runDelayedAsync(timeout, timeoutMs);
     }
 
     private void completeFuture(Map<UUID, CompletableFuture<Boolean>> map, UUID uuid, boolean value) {
@@ -693,19 +715,11 @@ public class AuthMe implements Listener {
     }
 
     private void runOnPlayer(Player player, Runnable task) {
-        if (plugin.isFolia()) {
-            player.getScheduler().run(plugin, t -> task.run(), null);
-        } else {
-            plugin.getServer().getScheduler().runTask(plugin, task);
-        }
+        plugin.scheduler().runOnPlayer(player, task);
     }
 
     public void runAsync(Runnable task) {
-        if (plugin.isFolia()) {
-            plugin.getServer().getAsyncScheduler().runNow(plugin, t -> task.run());
-        } else {
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task);
-        }
+        plugin.scheduler().runAsync(task);
     }
 
     private void scheduleDisconnect(PlayerConfigurationConnection conn,
@@ -714,11 +728,7 @@ public class AuthMe implements Listener {
         Runnable task = () -> {
             if (!authed.get() && ConnectionState.isConnected(conn)) conn.disconnect(message);
         };
-        if (plugin.isFolia()) {
-            plugin.getServer().getAsyncScheduler().runDelayed(plugin, t -> task.run(), seconds, TimeUnit.SECONDS);
-        } else {
-            plugin.getServer().getScheduler().runTaskLaterAsynchronously(plugin, task, seconds * 20L);
-        }
+        plugin.scheduler().runDelayedAsyncSeconds(task, seconds);
     }
 
     private void startPostSpawnTimeout(Player player) {
@@ -743,11 +753,7 @@ public class AuthMe implements Listener {
                 }
             }
         };
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> task.run(), null, delaySeconds * 20L);
-        } else {
-            plugin.getServer().getScheduler().runTaskLater(plugin, task, delaySeconds * 20L);
-        }
+        plugin.scheduler().runLater(player, task, delaySeconds * 20L);
     }
 
     @EventHandler
@@ -829,12 +835,7 @@ public class AuthMe implements Listener {
     }
 
     private void runLater(Player player, Runnable task, long ticks) {
-        long delay = Math.max(1L, ticks);
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> task.run(), null, delay);
-        } else {
-            plugin.getServer().getScheduler().runTaskLater(plugin, task, delay);
-        }
+        plugin.scheduler().runLater(player, task, ticks);
     }
 
     private void closeDialog(Player player) {
@@ -871,6 +872,56 @@ public class AuthMe implements Listener {
         return uuid != null && registeredThisSession.contains(uuid);
     }
 
+    /**
+     * Same limit as AuthMe AsyncRegister.isPlayerIpAllowedToRegister.
+     * Returns the kick reason when the limit is exceeded, else null.
+     */
+    public String checkMaxRegistrationPerIp(String name, String ip,
+            org.bukkit.entity.Player playerOrNullForPermission) {
+        ensureAuthMeConfigFresh();
+        int max = cachedMaxRegPerIp;
+        if (max <= 0) return null;
+        if (ip == null || ip.isBlank()) return null;
+        if (isLoopbackIp(ip)) return null;
+        if (playerOrNullForPermission != null && playerOrNullForPermission.hasPermission("authme.allowmultipleaccounts")) {
+            return null;
+        }
+        java.util.List<String> other = getAuthsByIp(ip);
+        if (other.size() >= max) {
+            return plugin.lang().disconnectMaxRegistrationExceeded(ip, max, other.size(),
+                    String.join(", ", other)).toString();
+        }
+        return null;
+    }
+
+    static boolean isLoopbackIp(String ip) {
+        if (ip == null) return false;
+        try {
+            java.net.InetAddress addr = java.net.InetAddress.getByName(ip);
+            return addr.isLoopbackAddress();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private java.util.List<String> getAuthsByIp(String ip) {
+        if (dataSource == null || dsGetAllAuthsByIp == null || ip == null) {
+            return java.util.List.of();
+        }
+        try {
+            Object result = dsGetAllAuthsByIp.invoke(dataSource, ip);
+            if (result instanceof java.util.List<?> list) {
+                @SuppressWarnings("unchecked")
+                java.util.List<String> typed = (java.util.List<String>) list;
+                return typed == null ? java.util.List.of() : typed;
+            }
+            return java.util.List.of();
+        } catch (Exception e) {
+            plugin.getLogger().warning("getAllAuthsByIp failed for " + ip + ": " + e.getMessage());
+            return java.util.List.of();
+        }
+    }
+
     public boolean registerPlayerNoValidation(String name, String password) {
         try {
             return (boolean) registerPlayer.invoke(api, name, password);
@@ -881,6 +932,11 @@ public class AuthMe implements Listener {
     }
 
     public void registerAndLoginNumeric(Player player, String code) {
+        String kick = checkMaxRegistrationPerIp(player.getName(), Util.ipOf(player), player);
+        if (kick != null) {
+            player.kick(net.kyori.adventure.text.Component.text(kick));
+            return;
+        }
         if (!registerPlayerNoValidation(player.getName(), code)) {
             return;
         }
@@ -946,10 +1002,12 @@ public class AuthMe implements Listener {
             }
         }
 
-        runLater(player, () -> doForceLogin(player, false, () ->
+        runLater(player, () -> doForceLogin(player, false, () -> {
+            if (!registered && resolveEffectiveCfg(player.getUniqueId()).premiumResetEnabled()) {
                 runOnPlayer(player, () -> com.authmebia.dialog.premium.Premium.showResetIngame(
-                        player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}))
-        ), 5L);
+                        player, resolveEffectiveCfg(player.getUniqueId()), this, () -> {}));
+            }
+        }), 5L);
     }
     public boolean isSessionEligibleByLastLogin(String name, String ip) {
         ensureAuthMeConfigFresh();
@@ -1036,6 +1094,11 @@ public class AuthMe implements Listener {
         }
     }
     public void registerAndLogin(Player player, String password) {
+        String kick = checkMaxRegistrationPerIp(player.getName(), Util.ipOf(player), player);
+        if (kick != null) {
+            player.kick(net.kyori.adventure.text.Component.text(kick));
+            return;
+        }
         runLater(player, () -> doForceRegister(player, password), 1L);
     }
     private void doForceRegister(Player player, String password) {

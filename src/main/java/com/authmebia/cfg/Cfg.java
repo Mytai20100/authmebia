@@ -546,6 +546,10 @@ public class Cfg {
                 "<red>Passwords do not match. Try again.</red>"));
     }
 
+    public boolean premiumResetEnabled() {
+        return config.getBoolean("premium.enabled", true);
+    }
+
     public Component premiumResetTitle() {
         return parse(config.getString("premium.title", "<gold>Set Your Password</gold>"));
     }

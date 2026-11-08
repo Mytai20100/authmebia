@@ -36,6 +36,18 @@ public final class Dialoglib {
     public static final long DIALOG_AWAIT_SECONDS = 30L;
     private static final java.lang.reflect.Method CALLBACK_SAM = findCallbackSam();
     private static final Map<UUID, EscapeGuard> ESCAPE_GUARDS = new ConcurrentHashMap<>();
+    private static volatile boolean callbackWarningLogged = false;
+
+    static {
+        if (CALLBACK_SAM == null) {
+            com.authmebia.AuthMeBia plugin = com.authmebia.AuthMeBia.get();
+            if (plugin != null) {
+                plugin.getLogger().warning("DialogActionCallback SAM not found; dialog buttons with sounds will be ignored");
+            } else {
+                System.err.println("[AuthMeBia] DialogActionCallback SAM not found; dialog buttons with sounds will be ignored");
+            }
+        }
+    }
 
     private Dialoglib() {}
 
@@ -141,11 +153,7 @@ public final class Dialoglib {
             if (!isStillPending.getAsBoolean()) return;
             reopen.run();
         };
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> check.run(), null, Math.max(1L, checkDelayTicks));
-        } else {
-            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, check, Math.max(1L, checkDelayTicks));
-        }
+        plugin.scheduler().runLater(player, check, checkDelayTicks);
     }
     public static void clearEscapeGuard(UUID uuid) {
         ESCAPE_GUARDS.remove(uuid);
@@ -198,7 +206,14 @@ public final class Dialoglib {
     }
 
     private static void invokeCallback(DialogActionCallback cb, DialogResponseView r, Audience a) {
-        if (CALLBACK_SAM == null) return;
+        if (CALLBACK_SAM == null) {
+            if (!callbackWarningLogged) {
+                callbackWarningLogged = true;
+                com.authmebia.AuthMeBia plugin = com.authmebia.AuthMeBia.get();
+                if (plugin != null) plugin.getLogger().warning("DialogActionCallback SAM unavailable; ignoring dialog button invocation");
+            }
+            return;
+        }
         try { CALLBACK_SAM.invoke(cb, r, a); }
         catch (java.lang.reflect.InvocationTargetException e) {
             Throwable t = e.getCause();

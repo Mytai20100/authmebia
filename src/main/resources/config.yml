@@ -10,7 +10,7 @@
 # Use \n inside a string to insert a line break.
 
 # Language code for messages (disconnect/kick, errors, chat).
-# Built-in options: en (English), vi (Vietnamese).
+# Built-in options: en (English), vi (Vietnamese), zh (Chinese Simplified), de (German), ru (Russian), fr (French).
 # To add your own, copy plugins/AuthMeBia/lang/en.yml to lang/<code>.yml and edit it.
 # Reload with /bia reload.
 lang: en
@@ -565,6 +565,11 @@ recover:
   mismatch_message: "<red>Passwords do not match. Try again.</red>"
 
 premium:
+  # Master switch for the password-set dialog on first auto-login.
+  # When set to false, auto-logged-in players will not be prompted to set
+  # a custom password, keeping the internally generated placeholder password.
+  enabled: true
+
   # Password-set dialog shown exactly once, the first time a player joins
   # via auto.premium_autologin or auto.bedrock_autologin. AuthMe still needs
   # a password on file for the account internally; this dialog lets the
@@ -985,4 +990,4 @@ ip_ban:
   # The last value is reused for any further offense beyond the list.
   ban_durations_seconds: [600, 1800, 3600, 86400]
 
-config_version: 4
+config_version: 5

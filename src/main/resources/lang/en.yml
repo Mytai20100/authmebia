@@ -12,6 +12,7 @@ disconnect:
   logout: "<gray>You have been disconnected."
   too_many_attempts: "<red>Too many failed login attempts."
   ip_banned: "<red>Your IP (<yellow>{player_ip}</yellow>) has been temporarily banned due to too many failed login attempts."
+  max_registration_exceeded: "<red>You have exceeded the maximum number of registrations ({count}/{max} {names}).</red>"
 
 # In-dialog inline error labels (appended to the input field label)
 error:
@@ -101,6 +102,8 @@ settings:
   hover_bedrock_autologin: "<gray>Skips the dialog for Bedrock players. Requires Floodgate.</gray>"
   label_bedrock_mode: "<white>Bedrock trust mode</white>"
   hover_bedrock_mode: "<gray>link trusts a linked Java account; geyser trusts any Bedrock connection.</gray>"
+  label_premium_reset: "<white>Premium password-set</white>"
+  hover_premium_reset: "<gray>Show the one-time password-set dialog on first auto-login (premium/bedrock).</gray>"
   option_link: "<white>Link</white>"
   option_geyser: "<white>Geyser</white>"
   label_totp_2fa: "<white>Two-factor authentication</white>"

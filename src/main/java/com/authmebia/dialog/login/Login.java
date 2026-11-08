@@ -71,9 +71,9 @@ public final class Login {
                     }
                     if (!authMe.checkPassword(name, pass)) {
                         error.set(lang.errorWrongPassword());
-                        ipGuard.recordFailure(ip, AuthMeBia.get().cfg(), AuthMeBia.get().lang());
+                        ipGuard.recordFailure(ip, cfg, lang);
 
-                        if (AuthMeBia.get().cfg().loginAttemptsEnabled() && wrongTries.incrementAndGet() >= AuthMeBia.get().cfg().loginMaxTries()) {
+                        if (cfg.loginAttemptsEnabled() && wrongTries.incrementAndGet() >= cfg.loginMaxTries()) {
                             kicked.set(true);
                         }
                         return;
