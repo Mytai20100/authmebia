@@ -212,11 +212,6 @@ public final class TitleService {
     }
 
     private void runAt(Player player, long delayTicks, Runnable task) {
-        long delay = Math.max(1L, delayTicks);
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> task.run(), null, delay);
-        } else {
-            plugin.getServer().getScheduler().runTaskLater(plugin, task, delay);
-        }
+        plugin.scheduler().runLater(player, task, delayTicks);
     }
 }

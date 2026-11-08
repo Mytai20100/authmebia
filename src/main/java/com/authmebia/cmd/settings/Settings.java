@@ -261,7 +261,11 @@ public final class Settings {
                                             "Link", Map.of())),
                                     new Option("geyser", plugin.lang().component("settings.option_geyser",
                                             "Geyser", Map.of()))),
-                            values.bedrockGeyser() ? "geyser" : "link", "link"));
+                            values.bedrockGeyser() ? "geyser" : "link", "link"),
+                    bool(plugin, "premium_reset", "settings.label_premium_reset",
+                            "Premium password-set", "settings.hover_premium_reset",
+                            "Show the one-time password-set dialog on first auto-login.",
+                            values.premiumResetEnabled()));
             case SECURITY -> List.of(
                     bool(plugin, "totp_2fa", "settings.label_totp_2fa",
                             "Two-factor authentication", "settings.hover_totp_2fa",
@@ -354,6 +358,7 @@ public final class Settings {
                 changes.put("auto.bedrock_mode", bedrockMode);
             }
         }
+        addBool(response, changes, "premium_reset", "premium.enabled", values.premiumResetEnabled());
         addBool(response, changes, "totp_2fa", "totp_2fa.enabled", values.totp2fa());
         addBool(response, changes, "email", "email.enabled", values.email());
         addBool(response, changes, "login_timeout", "login_timeout.enabled", values.loginTimeout());
@@ -397,6 +402,7 @@ public final class Settings {
                 view.premiumAutologinEnabled(),
                 view.bedrockAutologinEnabled(),
                 view.bedrockAutoLoginMode() == com.authmebia.cfg.BedrockCfg.AutoLoginMode.GEYSER,
+                view.premiumResetEnabled(),
                 view.totp2faEnabled(),
                 view.emailEnabled(),
                 view.loginTimeoutEnabled(),
@@ -507,11 +513,7 @@ public final class Settings {
     }
 
     private static void runAsync(AuthMeBia plugin, Runnable task) {
-        if (plugin.isFolia()) {
-            plugin.getServer().getAsyncScheduler().runNow(plugin, t -> task.run());
-        } else {
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task);
-        }
+        plugin.scheduler().runAsync(task);
     }
 
     private enum Category {
@@ -559,7 +561,8 @@ public final class Settings {
     }
 
     private record Values(boolean preSpawn, boolean sessionAutologin, boolean premiumAutologin,
-                          boolean bedrockAutologin, boolean bedrockGeyser, boolean totp2fa,
+                          boolean bedrockAutologin, boolean bedrockGeyser, boolean premiumResetEnabled,
+                          boolean totp2fa,
                           boolean email, boolean loginTimeout, boolean otpAttempts,
                           boolean loginAttempts, boolean captcha, boolean links, boolean linksSeparated,
                           boolean welcomeImage, boolean discord, boolean rule,

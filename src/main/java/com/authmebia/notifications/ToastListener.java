@@ -131,11 +131,7 @@ public final class ToastListener implements Listener {
 
             int seconds = overrideDelaySeconds != null ? overrideDelaySeconds : toast.delaySeconds();
             long delayTicks = Math.max(1L, seconds * 20L);
-            if (plugin.isFolia()) {
-                player.getScheduler().runDelayed(plugin, t -> revoke(player, advancement), null, delayTicks);
-            } else {
-                plugin.getServer().getScheduler().runTaskLater(plugin, () -> revoke(player, advancement), delayTicks);
-            }
+            plugin.scheduler().runLater(player, () -> revoke(player, advancement), delayTicks);
         } catch (Throwable t) {
             plugin.getLogger().warning("Failed to show toast '" + toast.name() + "': " + t.getMessage());
         }

@@ -36,13 +36,26 @@ public class IpGuard {
     }
 
     private void applyBan(String ip, long seconds, Lang lang) {
-        try {
-            BanList<String> banList = Bukkit.getBanList(BanList.Type.IP);
-            Duration duration = seconds > 0 ? Duration.ofSeconds(seconds) : null;
-            banList.addBan(ip, lang.ipBanReason(ip), duration, "AuthMeBia");
-        } catch (Exception e) {
-            AuthMeBia.get().getLogger().warning("Failed to apply IP ban for " + ip + ": " + e.getMessage());
+        String reason = lang.ipBanReason(ip);
+        AuthMeBia plugin = AuthMeBia.get();
+        if (plugin == null) {
+            try {
+                BanList<String> banList = Bukkit.getBanList(BanList.Type.IP);
+                Duration duration = seconds > 0 ? Duration.ofSeconds(seconds) : null;
+                banList.addBan(ip, reason, duration, "AuthMeBia");
+            } catch (Exception e) {
+            }
+            return;
         }
+        plugin.scheduler().runGlobal(() -> {
+            try {
+                BanList<String> banList = Bukkit.getBanList(BanList.Type.IP);
+                Duration duration = seconds > 0 ? Duration.ofSeconds(seconds) : null;
+                banList.addBan(ip, reason, duration, "AuthMeBia");
+            } catch (Exception e) {
+                plugin.getLogger().warning("Failed to apply IP ban for " + ip + ": " + e.getMessage());
+            }
+        });
     }
 
     public static String resolveIp(io.papermc.paper.connection.PlayerConfigurationConnection conn) {

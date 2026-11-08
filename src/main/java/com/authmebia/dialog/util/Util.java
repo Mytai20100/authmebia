@@ -36,11 +36,7 @@ public final class Util {
     public static boolean runOnMain(Player player, Runnable task) {
         AuthMeBia plugin = AuthMeBia.get();
         if (plugin == null || player == null || task == null) return false;
-        if (plugin.isFolia()) {
-            player.getScheduler().run(plugin, t -> task.run(), null);
-        } else {
-            plugin.getServer().getScheduler().runTask(plugin, task);
-        }
+        plugin.scheduler().runOnPlayer(player, task);
         return true;
     }
 
@@ -52,11 +48,7 @@ public final class Util {
     public static boolean runGlobal(Runnable task) {
         AuthMeBia plugin = AuthMeBia.get();
         if (plugin == null || task == null) return false;
-        if (plugin.isFolia()) {
-            plugin.getServer().getGlobalRegionScheduler().run(plugin, t -> task.run());
-        } else {
-            plugin.getServer().getScheduler().runTask(plugin, task);
-        }
+        plugin.scheduler().runGlobal(task);
         return true;
     }
 }

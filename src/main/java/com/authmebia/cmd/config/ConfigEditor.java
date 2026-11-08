@@ -346,10 +346,6 @@ public final class ConfigEditor {
     }
 
     private static void runAsync(AuthMeBia plugin, Runnable task) {
-        if (plugin.isFolia()) {
-            plugin.getServer().getAsyncScheduler().runNow(plugin, t -> task.run());
-        } else {
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task);
-        }
+        plugin.scheduler().runAsync(task);
     }
 }

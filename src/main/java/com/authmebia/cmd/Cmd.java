@@ -276,11 +276,7 @@ public class Cmd {
     }
 
     private void runOnPlayer(Player player, Runnable task) {
-        if (plugin.isFolia()) {
-            player.getScheduler().run(plugin, t -> task.run(), null);
-        } else {
-            plugin.getServer().getScheduler().runTask(plugin, task);
-        }
+        plugin.scheduler().runOnPlayer(player, task);
     }
 
     private UUID resolveUuid(String name) {

@@ -130,10 +130,11 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 
 **Authentication**
 - Premium bypass: players whose UUID matches a premium account stored in AuthMe are detected automatically and skip all dialogs of authmebia.
-- **Premium auto-login** (`auto.premium_autologin`, off by default): Goes a step further than the premium bypass above. Bia does not perform its own premium authentication or independently verify accounts with Mojang. Instead, it uses the premium authentication API provided by AuthMe Reload since version 6.0.0. Bia detects UUID v4 to determine when this API should be used, then handles the account setup process automatically: it calls `forceRegister` with a randomly generated password if the player is not registered yet, followed by `forceLogin`. Bia then uses AuthMe Reload's API to set the account's password and mark it as a premium account. No login or registration dialog is displayed during this process. Afterward, a one-time mandatory password-set dialog is displayed, requiring the player to set their own AuthMe password. Once completed, all subsequent premium authentication is handled by AuthMe Reload itself, without Bia displaying any further login dialogs.
+- **Premium auto-login** (`auto.premium_autologin`, off by default) + **Premium password-set** (`premium.enabled`, on by default): Goes a step further than the premium bypass above. Bia does not perform its own premium authentication or independently verify accounts with Mojang. Instead, it uses the premium authentication API provided by AuthMe Reload since version 6.0.0. Bia detects UUID v4 to determine when this API should be used, then handles the account setup process automatically: it calls `forceRegister` with a randomly generated password if the player is not registered yet, followed by `forceLogin`. Bia then uses AuthMe Reload's API to set the account's password and mark it as a premium account. No login or registration dialog is displayed during this process. Afterward, a one-time mandatory password-set dialog is displayed, requiring the player to set their own AuthMe password — **only on first registration** (`!registered`); returning players no longer see it on every login. Set `premium.enabled: false` to disable the prompt entirely and keep the internal placeholder. Once completed, all subsequent premium authentication is handled by AuthMe Reload itself, without Bia displaying any further login dialogs. Manageable via `/bia settings` (Auto-login → Premium password-set) and `/bia config` (premium section).
 - **Bedrock auto-login** (`auto.bedrock_autologin`, off by default): the same automatic login, but for Bedrock players connecting through Geyser/Floodgate. `auto.bedrock_mode` controls how much this trusts: `link` (default, safe) only applies if Floodgate reports the player's account as linked to a verified Java premium account; `geyser` (opt-in, unsafe unless Geyser's own online auth-type is enabled.But it unsafe when u config in geyser auth-type: offline ) trusts any Bedrock/Geyser connection with no linked-account check at all
 - **Bedrock dialog support**: Bedrock players see the same register/login/recover/rule/captcha/custom_screen dialogs as Java players, reusing all the same logic. `dialog.bedrock` lets you optionally override button width, input width, and the auth input mode (password/PIN/slider) just for Bedrock clients, since some Bedrock devices have a smaller usable dialog area
 - **Session auto-login** (`auto.session_autologin`, on by default): skips the dialog for a returning player that AuthMe's own session feature (`settings.sessions.enabled`/`timeout` in AuthMe's own config.yml) would already authenticate by matching IP and timeout. This reproduces AuthMe's own session comparison rather than asking AuthMe whether it already decided, since AuthMe does not evaluate its session feature until later in the join than this plugin's dialog decision is made. Has no effect at all unless AuthMe's own session feature is also enabled . If **session of bia detected fail** , it is feature :D . U don't worry security , bia only skip own dialog. Authme alway behind it
+- **Registration per-IP limit** — respects AuthMe `settings.restrictions.maxRegPerIp`. AuthMe's own `/register` checks the limit, but `forceRegister`/`registerPlayer` (used by the dialog) skip it. AuthMeBia mirrors the check by reading `settings.restrictions.maxRegPerIp` (default `1` in AuthMe) and querying `DataSource.getAllAuthsByIp(ip)` before creating an account; loopback IPs and players with `authme.allowmultipleaccounts` are exempt, exactly as in `AsyncRegister.isPlayerIpAllowedToRegister`. If the limit is exceeded, the player is disconnected with the same message AuthMe would show (`error.max_registration`). This applies to password/PIN/slider registration in both pre-join (blocking) and post-join (in-game) dialog modes, and to email-verified registration that eventually calls `registerAndLogin`.
 - TOTP / 2FA dialog for players who have an authenticator app set up in AuthMe
 - Captcha dialog synced with AuthMe's captcha setting.But so bad if bot use old procotol bia cannot show captcha :D . ( Fun feature)
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
@@ -205,7 +206,7 @@ AuthMeBia hooks into AuthMe Reloaded through reflection rather than a compile-ti
 | `fr.xephi.authme.api.v3.AuthMeApi` | Core operations: isRegistered, forceLogin, forceRegister, forceLogout, checkPassword, changePassword, isAuthenticated, registerPlayer, getLastIp, getLastLoginTime |
 | `fr.xephi.authme.data.auth.PlayerAuth` | Read player data: isPremium, getPremiumUuid, getEmail, getTotpKey, setEmail |
 | `fr.xephi.authme.data.auth.PlayerCache` | isAuthenticated(name) — used for in-memory authentication checks |
-| `fr.xephi.authme.datasource.DataSource` | Fetch PlayerAuth records (getAuth), check `auto.session_autologin` state (hasSession), persist email changes (updateEmail) |
+| `fr.xephi.authme.datasource.DataSource` | Fetch PlayerAuth records (getAuth), check `auto.session_autologin` state (hasSession), persist email changes (updateEmail), and enforce `settings.restrictions.maxRegPerIp` (getAllAuthsByIp) |
 | `fr.xephi.authme.mail.EmailService` | Check SMTP availability, send verification codes |
 | `fr.xephi.authme.security.totp.TotpAuthenticator` | Verify TOTP codes for 2FA dialog (`checkCode(PlayerAuth, String)`) |
 | `fr.xephi.authme.events.LoginEvent` | Detect successful login to complete async futures |
@@ -273,7 +274,7 @@ The built jar is placed in `out/artifacts/`. Copy it to your server's `plugins/`
 # Use \n inside a string to insert a line break.
 
 # Language code for messages (disconnect/kick, errors, chat).
-# Built-in options: en (English), vi (Vietnamese).
+# Built-in options: en (English), vi (Vietnamese), zh (Chinese Simplified), de (German), ru (Russian), fr (French).
 # To add your own, copy plugins/AuthMeBia/lang/en.yml to lang/<code>.yml and edit it.
 # Reload with /bia reload.
 lang: en
@@ -462,6 +463,13 @@ recover:
 # auto.premium_autologin or auto.bedrock_autologin. Has no effect if both
 # of those are false.
 premium:
+  # Master switch for the password-set dialog on first auto-login.
+  # When false, auto-logged-in players will not be prompted to set a custom
+  # password, keeping the internally generated placeholder password.
+  # Default: true. Note: this does not affect AuthMe's
+  # settings.restrictions.maxRegPerIp check, which is enforced separately
+  # before any dialog registration.
+  enabled: true
   title: "<gold>Set Your Password</gold>"
   content: "<gray>You were signed in automatically. Please set a password for your account (used if you ever join from a non-verified client).</gray>"
   new_password_label: "New password"
@@ -594,7 +602,7 @@ custom_icons:
     atlas: items
     sprite: item/barrier
 
-config_version: 4
+config_version: 5
 ```
 
 </details>

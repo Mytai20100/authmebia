@@ -26,11 +26,7 @@ public final class Recover {
                 plugin.recoverStore().clear(online.getUniqueId());
                 if (!authMe.isAuthenticated(online)) authMe.runAsync(() -> authMe.login(online));
             });
-            if (plugin.isFolia()) {
-                online.getScheduler().run(plugin, t -> show.run(), null);
-            } else {
-                plugin.getServer().getScheduler().runTask(plugin, show);
-            }
+            plugin.scheduler().runOnPlayer(online, show);
             sender.sendMessage(Component.text(name + " is online and has been shown the password reset dialog."));
         } else {
             sender.sendMessage(Component.text(name + " will be asked to set a new password on their next login."));

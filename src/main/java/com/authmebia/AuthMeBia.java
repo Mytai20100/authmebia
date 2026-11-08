@@ -36,6 +36,7 @@ public final class AuthMeBia extends JavaPlugin {
     private RecoverStore recoverStore;
     private ScreenDismissStore screenDismissStore;
     private boolean foliaServer;
+    private com.authmebia.platform.Scheduler scheduler;
     private OkHttpClient httpClient;
     private AuthMe authMeListener;
     private TitleService titleService;
@@ -47,6 +48,7 @@ public final class AuthMeBia extends JavaPlugin {
     public void onEnable() {
         instance = this;
         foliaServer = detectFolia();
+        scheduler = new com.authmebia.platform.Scheduler(this);
 
         if (!checkAuthMe()) {
             getLogger().severe("AuthMe (or any fork) is not installed or not enabled. Disabling AuthMeBia.");
@@ -85,6 +87,10 @@ public final class AuthMeBia extends JavaPlugin {
 
         saveDefaultLang("lang/en.yml");
         saveDefaultLang("lang/vi.yml");
+        saveDefaultLang("lang/zh.yml");
+        saveDefaultLang("lang/de.yml");
+        saveDefaultLang("lang/ru.yml");
+        saveDefaultLang("lang/fr.yml");
 
         authMeListener = new AuthMe(this);
         getServer().getPluginManager().registerEvents(authMeListener, this);
@@ -281,6 +287,10 @@ public final class AuthMeBia extends JavaPlugin {
 
     public boolean isFolia() {
         return foliaServer;
+    }
+
+    public com.authmebia.platform.Scheduler scheduler() {
+        return scheduler;
     }
 
     public String platformName() {

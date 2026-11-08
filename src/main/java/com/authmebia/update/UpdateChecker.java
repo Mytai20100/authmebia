@@ -120,11 +120,7 @@ public final class UpdateChecker implements Listener {
 
     private void scheduleCheck() {
         if (!plugin.cfg().updateCheckerEnabled()) return;
-        if (plugin.isFolia()) {
-            plugin.getServer().getAsyncScheduler().runNow(plugin, t -> checkSafely());
-        } else {
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::checkSafely);
-        }
+        plugin.scheduler().runAsync(this::checkSafely);
     }
 
     private void checkSafely() {
@@ -247,11 +243,7 @@ public final class UpdateChecker implements Listener {
                 plugin.getLogger().warning("Update checker delayed task failed: " + t.getMessage());
             }
         };
-        if (plugin.isFolia()) {
-            player.getScheduler().runDelayed(plugin, t -> safe.run(), null, delayTicks);
-        } else {
-            plugin.getServer().getScheduler().runTaskLater(plugin, safe, delayTicks);
-        }
+        plugin.scheduler().runLater(player, safe, delayTicks);
     }
 
     private void runLaterGlobal(long delayTicks, Runnable task) {
@@ -262,11 +254,7 @@ public final class UpdateChecker implements Listener {
                 plugin.getLogger().warning("Update checker delayed task failed: " + t.getMessage());
             }
         };
-        if (plugin.isFolia()) {
-            plugin.getServer().getGlobalRegionScheduler().runDelayed(plugin, t -> safe.run(), delayTicks);
-        } else {
-            plugin.getServer().getScheduler().runTaskLater(plugin, safe, delayTicks);
-        }
+        plugin.scheduler().runLaterGlobal(safe, delayTicks);
     }
 
     private static boolean isNewer(String candidate, String current) {

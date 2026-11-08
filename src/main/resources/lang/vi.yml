@@ -12,6 +12,7 @@ disconnect:
   logout: "<gray>Bạn đã ngắt kết nối khỏi máy chủ."
   too_many_attempts: "<red>Quá nhiều lần nhập sai mật khẩu."
   ip_banned: "<red>IP của bạn (<yellow>{player_ip}</yellow>) đã bị cấm tạm thời do nhập sai mật khẩu quá nhiều lần."
+  max_registration_exceeded: "<red>Bạn đã vượt quá số lượt đăng ký tối đa ({count}/{max} {names}).</red>"
 
 # Nhãn lỗi nội tuyến trong dialog (gắn thêm vào nhãn ô nhập)
 error:
@@ -101,6 +102,8 @@ settings:
   hover_bedrock_autologin: "<gray>Bỏ qua hộp thoại cho người chơi Bedrock. Cần Floodgate.</gray>"
   label_bedrock_mode: "<white>Chế độ tin cậy Bedrock</white>"
   hover_bedrock_mode: "<gray>link tin cậy tài khoản Java đã liên kết; geyser tin cậy mọi kết nối Bedrock.</gray>"
+  label_premium_reset: "<white>Đặt mật khẩu Premium</white>"
+  hover_premium_reset: "<gray>Hiện hộp thoại đặt mật khẩu một lần khi tự đăng nhập lần đầu (premium/bedrock).</gray>"
   option_link: "<white>Liên kết</white>"
   option_geyser: "<white>Geyser</white>"
   label_totp_2fa: "<white>Xác thực hai lớp</white>"
