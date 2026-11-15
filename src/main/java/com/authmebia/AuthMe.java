@@ -2,6 +2,7 @@ package com.authmebia;
 
 import com.authmebia.cfg.Cfg;
 import com.authmebia.cfg.TitleScript;
+import com.authmebia.dialog.Dialoglib;
 import com.authmebia.dialog.Mode;
 import com.authmebia.dialog.captcha.Captcha;
 import com.authmebia.dialog.customscreen.CustomScreen;
@@ -22,6 +23,8 @@ import fr.xephi.authme.events.FailedLoginEvent;
 import fr.xephi.authme.events.LoginEvent;
 import fr.xephi.authme.events.LogoutEvent;
 import fr.xephi.authme.events.RegisterEvent;
+import fr.xephi.authme.events.UnregisterByAdminEvent;
+import fr.xephi.authme.events.UnregisterByPlayerEvent;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -506,6 +509,7 @@ public class AuthMe implements Listener {
             login(player);
         }
 
+        boolean authenticated = isAuthenticated(player);
         boolean sessionAuthenticated = plugin.cfg().sessionAutologinEnabled()
                 && isSessionAuthenticated(player.getName());
         boolean sessionSkip = plugin.cfg().sessionAutologinEnabled()
@@ -514,9 +518,10 @@ public class AuthMe implements Listener {
         if (plugin.cfg().dialogEnabled() && !plugin.cfg().dialogPreSpawn()
                 && !plugin.biaList().isBypassed(uuid)
                 && !isPremiumSkip(uuid, player.getName())
-                && !sessionSkip) {
+                && !sessionSkip
+                && !authenticated) {
             showPostJoinAuth(player);
-        } else if (sessionAuthenticated) {
+        } else if (authenticated || sessionAuthenticated) {
             schedulePostJoinScreens(player);
         }
     }
@@ -531,8 +536,10 @@ public class AuthMe implements Listener {
     }
 
     private void showPostJoinAuth(Player player) {
+        if (player == null || !player.isOnline()) return;
         UUID uuid = player.getUniqueId();
         if (!plugin.cfg().dialogEnabled() || plugin.biaList().isBypassed(uuid)) return;
+        if (isAuthenticated(player)) return;
 
         Cfg cfg = resolveEffectiveCfg(uuid);
         boolean registered = isRegisteredByName(player.getName());
@@ -542,7 +549,7 @@ public class AuthMe implements Listener {
 
         if (dialogsSupported) {
             runOnPlayer(player, () -> {
-                if (!player.isOnline()) return;
+                if (!player.isOnline() || isAuthenticated(player)) return;
                 if (recover) {
                     Recover.showRecoverIngame(player, cfg, this, () -> {
                         plugin.recoverStore().clear(uuid);
@@ -560,7 +567,7 @@ public class AuthMe implements Listener {
             });
         } else if (numericMode) {
             runOnPlayer(player, () -> {
-                if (!player.isOnline()) return;
+                if (!player.isOnline() || isAuthenticated(player)) return;
                 if (recover) {
                     Recover.showRecoverInventoryFallback(player, cfg, this, () -> {
                         plugin.recoverStore().clear(uuid);
@@ -584,7 +591,11 @@ public class AuthMe implements Listener {
         Player player = event.getPlayer();
         if (player == null) return;
         UUID uuid = player.getUniqueId();
+        boolean biaInitiated = pendingLoginFutures.containsKey(uuid);
         completeFuture(pendingLoginFutures, uuid, true);
+        if (!biaInitiated) {
+            closeAuthDialog(player);
+        }
         queueTitleTrigger(player, "is_login");
         queueTitleTrigger(player, Boolean.TRUE.equals(firstJoinSessions.get(uuid))
                 ? "is_firstjoin" : "is_rejoin");
@@ -632,6 +643,50 @@ public class AuthMe implements Listener {
             closeDialog(player);
             showPostJoinAuth(player);
         });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAuthMeUnregisterByPlayer(UnregisterByPlayerEvent event) {
+        handleAuthMeUnregister(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAuthMeUnregisterByAdmin(UnregisterByAdminEvent event) {
+        Player player = event.getPlayer();
+        if (player == null && event.getPlayerName() != null) {
+            player = plugin.getServer().getPlayerExact(event.getPlayerName());
+        }
+        handleAuthMeUnregister(player);
+    }
+
+    private void handleAuthMeUnregister(Player player) {
+        if (player == null || !player.isOnline()) return;
+        UUID uuid = player.getUniqueId();
+        AuthInput.clearSession(uuid);
+        EmailVerify.clearEmailSession(uuid);
+        com.authmebia.dialog.shared.InventoryAuthInput.clearSession(uuid);
+        pendingEmail.remove(uuid);
+        registeredThisSession.remove(uuid);
+        registrationNotifications.remove(uuid);
+        pendingTitleTriggers.remove(uuid);
+        titleFlushScheduled.remove(uuid);
+        postJoinScreensHandled.remove(uuid);
+        recoveredThisSession.remove(uuid);
+        loginTimeoutGenerations.merge(uuid, 1L, Long::sum);
+        plugin.recoverStore().clear(uuid);
+        Dialoglib.clearEscapeGuard(uuid);
+        runOnPlayer(player, () -> {
+            if (!player.isOnline() || isAuthenticated(player)) return;
+            if (!plugin.cfg().dialogEnabled() || plugin.biaList().isBypassed(uuid)) return;
+            closeDialog(player);
+            showPostJoinAuth(player);
+        });
+    }
+
+    private void closeAuthDialog(Player player) {
+        if (player == null || !player.isOnline()) return;
+        Dialoglib.clearEscapeGuard(player.getUniqueId());
+        runOnPlayer(player, () -> closeDialog(player));
     }
 
     private void queueTitleTrigger(Player player, String trigger) {
