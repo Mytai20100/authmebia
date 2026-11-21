@@ -9,6 +9,9 @@ import io.papermc.paper.registry.data.dialog.action.DialogActionCallback;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.audience.Audience;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.entity.Player;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -60,5 +63,37 @@ public final class Rule {
             if (agreed.get()) return true;
         }
         return false;
+    }
+
+    public static void showRuleDebugIngame(Player player, Cfg cfg) {
+        String playerName = player.getName();
+        Cfg.withPlayerContext(playerName, () -> showRuleDebugIngameInner(player, cfg, playerName));
+    }
+
+    private static void showRuleDebugIngameInner(Player player, Cfg cfg, String playerName) {
+        player.showDialog(Dialog.create(d -> d
+                .empty()
+                .base(buildBase(cfg.ruleTitle(playerName), cfg.ruleContent(playerName),
+                        // The real pre-join dialog cannot be closed with ESC. For a
+                        // debug preview that would trap the admin, so allow it here.
+                        true,
+                        List.of(
+                                DialogInput.bool("agree", cfg.ruleCheckboxLabel())
+                                        .initial(false)
+                                        .build()
+                        )))
+                .type(buildType(cfg, playerName,
+                        List.of(btn(cfg, cfg.ruleAgreeButton(), cfg.ruleAgreeSound(), (r, a) -> {
+                            boolean agreed = Boolean.TRUE.equals(r.getBoolean("agree"));
+                            if (a instanceof Player p) {
+                                p.sendMessage(Component.text(
+                                        agreed
+                                                ? "[debug] Rule agreed (preview only, nothing was saved)."
+                                                : "[debug] Rule dialog submitted without ticking the checkbox.",
+                                        agreed ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
+                            }
+                        })),
+                        null))
+        ));
     }
 }

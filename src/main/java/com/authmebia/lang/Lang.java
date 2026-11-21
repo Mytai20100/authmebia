@@ -160,19 +160,18 @@ public final class Lang {
     }
 
     public String ipBanReason(String ip) {
-        String raw = data.getString("disconnect.ip_banned",
+        String raw = resolve("disconnect.ip_banned",
                 "Too many failed login attempts from {player_ip}.");
         return applyPlaceholders(raw, null, ip);
     }
 
     private Component parse(String key, String player, String ip) {
-        String raw = data.getString(key, key);
-        raw = applyPlaceholders(raw, player, ip);
+        String raw = applyPlaceholders(resolve(key, key), player, ip);
         return MM.deserialize(raw);
     }
 
     private String raw(String key, String fallback) {
-        return data.getString(key, fallback);
+        return resolve(key, fallback);
     }
 
     private String applyPlaceholders(String input, String player, String ip) {

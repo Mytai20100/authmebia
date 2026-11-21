@@ -73,17 +73,9 @@ public final class AuthMeBia extends JavaPlugin {
                 .writeTimeout(10, TimeUnit.SECONDS)
                 .build();
 
-        if (!new java.io.File(getDataFolder(), "welcome.json").exists()) {
-            saveResource("welcome.json", false);
-        }
-
-        if (!new java.io.File(getDataFolder(), "background.png").exists()) {
-            saveResource("background.png", false);
-        }
-
-        if (!new java.io.File(getDataFolder(), "doc/README.md").exists()) {
-            saveResource("doc/README.md", false);
-        }
+        saveResourceIfBundled("welcome.json");
+        saveResourceIfBundled("background.png");
+        saveResourceIfBundled("doc/README.md");
 
         saveDefaultLang("lang/en.yml");
         saveDefaultLang("lang/vi.yml");
@@ -241,6 +233,21 @@ public final class AuthMeBia extends JavaPlugin {
     private void saveDefaultLang(String resource) {
         java.io.File file = new java.io.File(getDataFolder(), resource);
         if (!file.exists()) {
+            saveResource(resource, false);
+        }
+    }
+
+    /**
+     * Copies a bundled resource to the data folder when it is missing.
+     * {@link #saveResource(String, boolean)} throws when the resource is not in
+     * the jar, so a renamed/missing asset must not be able to abort onEnable.
+     */
+    private void saveResourceIfBundled(String resource) {
+        if (getResource(resource) == null) {
+            getLogger().warning("Bundled resource '" + resource + "' is missing from the jar; skipping.");
+            return;
+        }
+        if (!new java.io.File(getDataFolder(), resource).exists()) {
             saveResource(resource, false);
         }
     }

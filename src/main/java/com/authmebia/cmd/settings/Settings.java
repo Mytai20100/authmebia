@@ -87,7 +87,6 @@ public final class Settings {
                         try {
                             if (!(audience instanceof Player p) || !p.isOnline()) return;
                             if (!permission(plugin, p)) return;
-                            session.reload = reload(response, session.reload);
                             openCategory(plugin, p, session, category);
                         } catch (Throwable t) {
                             plugin.getLogger().warning("Settings category open failed: " + t.getMessage());
@@ -102,7 +101,6 @@ public final class Settings {
                     try {
                         if (!(audience instanceof Player p) || !p.isOnline()) return;
                         if (!permission(plugin, p)) return;
-                        session.reload = reload(response, session.reload);
                         saveAll(plugin, p, session);
                     } catch (Throwable t) {
                         plugin.getLogger().warning("Settings save failed: " + t.getMessage());
@@ -119,14 +117,9 @@ public final class Settings {
         Component body = plugin.lang().component("settings.home_instructions",
                 "Choose a category to edit. Changes are kept until you use Save & exit.",
                 Map.of());
-        Component reloadLabel = label(plugin, "settings.label_reload",
-                "Reload plugin after saving", "settings.hover_reload",
-                "Reloads config and lang immediately after a successful save.");
-        DialogInput reloadInput = DialogInput.bool("reload", reloadLabel)
-                .initial(session.reload).build();
 
         player.showDialog(Dialog.create(d -> d.empty()
-                .base(Dialoglib.buildBase(title, body, true, List.of(reloadInput)))
+                .base(Dialoglib.buildBase(title, body, true, List.of()))
                 .type(DialogType.multiAction(buttons, null, 3))));
     }
 
@@ -183,7 +176,6 @@ public final class Settings {
             return;
         }
         Map<String, String> changes = new LinkedHashMap<>(session.changes);
-        boolean reload = session.reload;
         runAsync(plugin, () -> {
             try {
                 String updated = session.snapshot.text();
@@ -194,19 +186,16 @@ public final class Settings {
                 Util.runOnMain(player, () -> {
                     try {
                         if (!player.isOnline()) return;
-                        if (reload) {
-                            try {
-                                Reload.reload(plugin);
-                                player.sendMessage(plugin.lang().component("settings.reloaded",
-                                        "Settings saved and plugin reloaded.", Map.of()));
-                                return;
-                            } catch (Throwable t) {
-                                plugin.getLogger().warning(
-                                        "Reload after settings save failed: " + t.getMessage());
-                            }
+                        try {
+                            Reload.reload(plugin);
+                            player.sendMessage(plugin.lang().component("settings.reloaded",
+                                    "Settings saved and plugin reloaded.", Map.of()));
+                        } catch (Throwable t) {
+                            plugin.getLogger().warning(
+                                    "Reload after settings save failed: " + t.getMessage());
+                            player.sendMessage(plugin.lang().component("settings.saved",
+                                    "Settings saved.", Map.of()));
                         }
-                        player.sendMessage(plugin.lang().component("settings.saved",
-                                "Settings saved.", Map.of()));
                     } catch (Throwable t) {
                         plugin.getLogger().warning("Settings confirmation failed: " + t.getMessage());
                     }
@@ -310,7 +299,7 @@ public final class Settings {
                             values.welcomeImage()),
                     bool(plugin, "discord", "settings.label_discord",
                             "Discord webhook", "settings.hover_discord",
-                            "Sends the welcome image to the configured Discord webhook.",
+                            "Sends registration notifications and the welcome image to the configured webhook.",
                             values.discord()));
             case AUTH -> List.of(
                     choice(plugin, "auth_mode", "settings.label_auth_mode",
@@ -423,11 +412,6 @@ public final class Settings {
         player.sendMessage(plugin.lang().component("command.no_permission",
                 "You do not have permission to do that.", Map.of()));
         return false;
-    }
-
-    private static boolean reload(DialogResponseView response, boolean fallback) {
-        Boolean value = response.getBoolean("reload");
-        return value == null ? fallback : value;
     }
 
     private static void fail(AuthMeBia plugin, Player player, String key, String fallback,
@@ -552,7 +536,6 @@ public final class Settings {
         private final ConfigFile configFile;
         private final ConfigFile.Snapshot snapshot;
         private final Map<String, String> changes = new LinkedHashMap<>();
-        private boolean reload = true;
 
         private Session(ConfigFile configFile, ConfigFile.Snapshot snapshot) {
             this.configFile = configFile;

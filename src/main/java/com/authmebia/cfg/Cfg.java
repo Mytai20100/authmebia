@@ -321,10 +321,18 @@ public class Cfg {
         return parse(config.getString("rule.agree_button", "<green>Agree</green>"));
     }
 
+    private static final String PLAYER_AVATAR_TOKEN = "{player_avatar}";
+    private static final String PLAYER_AVATAR_SENTINEL = "\u0000authmebia_player_avatar\u0000";
+
     private String replacePlayer(String input, String playerName) {
         if (input == null) return null;
         String safeName = playerName == null ? "" : playerName;
-        return input.replace("{player}", safeName);
+        // Protect {player_avatar} first: a plain {player} replacement would
+        // turn it into "<name>_avatar", so the Discord renderer would never
+        // see the avatar placeholder and no skin would be attached.
+        return input.replace(PLAYER_AVATAR_TOKEN, PLAYER_AVATAR_SENTINEL)
+                .replace("{player}", safeName)
+                .replace(PLAYER_AVATAR_SENTINEL, PLAYER_AVATAR_TOKEN);
     }
 
     public boolean discordEnabled() {
@@ -335,10 +343,31 @@ public class Cfg {
         return config.getString("discord.webhook_url", "");
     }
 
-    public String discordMessage(String playerName) {
-        String raw = config.getString("discord.message", "**{player}** has registered.");
+    public boolean discordNotifyEnabled(boolean firstJoin) {
+        if (!discordEnabled()) return false;
+        String webhook = discordWebhook();
+        if (webhook == null || webhook.isBlank()) return false;
+        return config.getBoolean(discordNotifyPath(firstJoin) + ".enabled", true);
+    }
+
+    public String discordNotifyTitle(boolean firstJoin, String playerName) {
+        String fallback = firstJoin ? "Newbie :D" : "";
+        String raw = config.getString(discordNotifyPath(firstJoin) + ".title", fallback);
         if (raw == null) return "";
         return replacePlayer(raw, playerName);
+    }
+
+    public String discordNotifyContent(boolean firstJoin, String playerName) {
+        // discord.message is the legacy key; it stays as a fallback so existing
+        // configurations keep working after the per-section keys were added.
+        String legacy = config.getString("discord.message", "**{player}** has registered.");
+        String raw = config.getString(discordNotifyPath(firstJoin) + ".content", legacy);
+        if (raw == null) return "";
+        return replacePlayer(raw, playerName);
+    }
+
+    private static String discordNotifyPath(boolean firstJoin) {
+        return firstJoin ? "discord.register_first" : "discord.register";
     }
 
     public boolean welcomeImageEnabled() {
@@ -406,6 +435,14 @@ public class Cfg {
         return config.getBoolean("email.enabled", false);
     }
 
+    /**
+     * When true, /unreg and /unregister show the code dialog instead of
+     * AuthMe's chat-based /email code flow. Requires AuthMe's SMTP settings.
+     */
+    public boolean emailUnregisterVerify() {
+        return config.getBoolean("email.unregister_verify", true);
+    }
+
     public int emailCodeLength() {
         int length = config.getInt("email.code_length", 6);
         if (length < 4) return 4;
@@ -464,6 +501,10 @@ public class Cfg {
     public Component emailResendButtonCooldown(int remaining) {
         String raw = config.getString("email.resend_button_cooldown", "<gray>Resend ({cooldown}s)</gray>");
         return parse(raw.replace("{cooldown}", Integer.toString(Math.max(0, remaining))));
+    }
+
+    public Component emailCancelButton() {
+        return parse(config.getString("email.cancel_button", "<gray>Cancel</gray>"));
     }
 
     public Component emailInvalidEmailMessage() {

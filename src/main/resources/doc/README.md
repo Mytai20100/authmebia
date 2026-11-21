@@ -154,6 +154,41 @@ settings, since this step is the same verify dialog used during registration.
 
 ---
 
+## Unregister Verification
+
+AuthMe protects `/unreg` (and `/unregister`) with an email verification code
+when the account has an email on file. By default AuthMe sends that code in
+chat and asks the player to type `/email code <code>` before the command runs.
+AuthMeBia can replace that chat step with a dialog:
+
+```yaml
+email:
+  # Works even when email.enabled is false, as long as AuthMe's own
+  # Email.mailAccount / Email.mailPassword / Email.mailSMTP are configured.
+  unregister_verify: true
+```
+
+### Flow
+
+1. The player runs `/unreg <password>` or `/unregister <password>`.
+2. If AuthMe would require a verification code, AuthMeBia cancels the command,
+   sends a numeric code to the account's stored email, and shows the same
+   verify dialog used by forgot password and registration email verification.
+3. The player enters the code. Resend uses `email.resend_cooldown`, and the
+   wrong-code/attempt limits use `email.wrong_code_error`, `otp_attempts.*`
+   and the IP guard.
+4. After the code is correct, AuthMeBia marks the session as verified and
+   replays the original command. AuthMe then performs its normal password
+   check and removes the account. This keeps AuthMe's password confirmation
+   intact — the dialog replaces only the email-code step.
+
+The Cancel button uses `email.cancel_button`. The dialog is skipped for
+players without an email, players without AuthMe's verification permission,
+players on clients that cannot render dialogs, and when
+`email.unregister_verify: false`.
+
+---
+
 ## Button Layout
 
 `dialog.button_layout` controls how the main action buttons are arranged
@@ -686,18 +721,36 @@ welcome_image:
 
 If `discord.enabled` is `true` and a `discord.webhook_url` is set, the image is
 also sent to that webhook. Webhook URLs must use `https`. When `welcome_image.enabled` is false, Discord still
-receives the text from `discord.message`, so registrations performed through
-AuthMe's own `/authme register` command are reported too.
+receives the text notification, so registrations performed through AuthMe's
+own `/authme register` command are reported too.
 
 ```yaml
 discord:
   enabled: true
   webhook_url: "https://discord.com/api/webhooks/..."
-  message: "**{player}** has registered."
+  register_first:
+    enabled: true
+    title: "Newbie :D"
+    content: "**{player}** has registered. {player_avatar}"
+  register:
+    enabled: true
+    title: ""
+    content: "**{player}** has registered. {player_avatar}"
 ```
 
-`discord.message` supports `{player}` and is used as the image caption when
-`welcome_image.enabled` is true.
+`register_first` is used for a player's first registration in the current join
+session (normally their first-ever join), `register` for every other
+registration — including a player who was unregistered and registers again.
+Each section can be turned off with `enabled: false`. `title` and `content`
+support MiniMessage (converted to Discord markdown: bold, italic, underline,
+strikethrough, spoiler, links; colors are ignored because Discord text has
+none) and the placeholders `{player}` and `{player_avatar}`. The latter is
+removed from the text and shows the player's skin as a thumbnail. The rendered
+head is uploaded together with the webhook message, so no external avatar
+service (Crafatar, mc-heads, etc.) is required. The player profile must contain
+a skin texture; on offline-mode servers without a skin plugin no thumbnail is
+attached (the message itself is still sent). When `welcome_image.enabled` is
+true, the same title/content are used as the image caption.
 
 ### fields
 

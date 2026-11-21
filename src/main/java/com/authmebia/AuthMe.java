@@ -12,6 +12,7 @@ import com.authmebia.dialog.recover.Recover;
 import com.authmebia.dialog.register.Register;
 import com.authmebia.dialog.rule.Rule;
 import com.authmebia.dialog.shared.AuthInput;
+import com.authmebia.dialog.unregister.Unregister;
 import com.authmebia.lang.Lang;
 import com.authmebia.dialog.util.Util;
 import com.authmebia.listeners.version.Version;
@@ -33,6 +34,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.potion.PotionEffectType;
 
 import java.io.File;
@@ -54,6 +56,7 @@ public class AuthMe implements Listener {
     private Method forceLogin;
     private Method forceLogout;
     private Method forceRegister;
+    private Method forceUnregister;
     private Method checkPassword;
     private Method changePassword;
     private Method isAuthenticated;
@@ -72,6 +75,9 @@ public class AuthMe implements Listener {
     private Object emailService;
     private Method emailHasAllInfo;
     private Method emailSendVerification;
+    private Object verificationCodeManager;
+    private Method vcIsVerificationRequired;
+    private Method vcVerify;
     private Method dsUpdateEmail;
     private Method authSetEmail;
     public final Map<UUID, String> pendingEmail = new ConcurrentHashMap<>();
@@ -95,7 +101,22 @@ public class AuthMe implements Listener {
     private final Map<UUID, java.util.Set<String>> pendingTitleTriggers = new ConcurrentHashMap<>();
     private final java.util.Set<UUID> titleFlushScheduled = ConcurrentHashMap.newKeySet();
     private final java.util.Set<UUID> registeredThisSession = ConcurrentHashMap.newKeySet();
-    private final Map<UUID, Long> registrationNotifications = new ConcurrentHashMap<>();
+    // Players who were confirmed unregistered when they joined. If AuthMe
+    // later reports a successful login for one of them without firing
+    // RegisterEvent (for example registerPlayer API calls), that login is a
+    // registration and must still trigger the webhook.
+    private final java.util.Set<UUID> unregisteredAtJoin = ConcurrentHashMap.newKeySet();
+    // Registrations that AuthMe reported before the player was fully online
+    // (for example during the configuration phase). They are announced on join.
+    private final java.util.Set<UUID> pendingRegistrationNotify = ConcurrentHashMap.newKeySet();
+    private final java.util.Set<UUID> firstRegistrationDone = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Boolean> registrationFirstJoin = new ConcurrentHashMap<>();
+    private final java.util.Set<UUID> unregisterReplay = ConcurrentHashMap.newKeySet();
+    // Registration paths overlap: AuthMe may fire RegisterEvent and a
+    // LoginEvent for the same registration, and finishRegisterLogin runs as
+    // well. Only the first call in a session may send a webhook; unregistering
+    // clears the entry so a later registration notifies again.
+    private final java.util.Set<UUID> registrationNotified = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Long> loginTimeoutGenerations = new ConcurrentHashMap<>();
     private final java.util.Set<UUID> postJoinScreensHandled = ConcurrentHashMap.newKeySet();
     private final java.util.Set<UUID> recoveredThisSession = ConcurrentHashMap.newKeySet();
@@ -121,6 +142,7 @@ public class AuthMe implements Listener {
             forceLogin = cls.getMethod("forceLogin", Player.class);
             forceLogout = cls.getMethod("forceLogout", Player.class);
             forceRegister = cls.getMethod("forceRegister", Player.class, String.class);
+            forceUnregister = cls.getMethod("forceUnregister", Player.class);
             checkPassword = cls.getMethod("checkPassword", String.class, String.class);
             changePassword = cls.getMethod("changePassword", String.class, String.class);
             isAuthenticated = cls.getMethod("isAuthenticated", Player.class);
@@ -187,6 +209,22 @@ public class AuthMe implements Listener {
         } catch (Throwable t) {
             plugin.getLogger().info("AuthMe email reflection unavailable; email verification disabled (" + t + ")");
             emailService = null;
+        }
+
+        try {
+            Object authMePlugin = api.getClass().getMethod("getPlugin").invoke(api);
+            java.lang.reflect.Field injField = authMePlugin.getClass().getDeclaredField("injector");
+            injField.setAccessible(true);
+            Object injector = injField.get(authMePlugin);
+            Method getSingleton = Class.forName("ch.jalu.injector.Injector").getMethod("getSingleton", Class.class);
+
+            Class<?> vcClass = Class.forName("fr.xephi.authme.data.VerificationCodeManager");
+            verificationCodeManager = getSingleton.invoke(injector, vcClass);
+            vcIsVerificationRequired = vcClass.getMethod("isVerificationRequired", Player.class);
+            vcVerify = vcClass.getMethod("verify", String.class);
+        } catch (Throwable t) {
+            plugin.getLogger().info("AuthMe unregister verification unavailable; using AuthMe's chat flow (" + t + ")");
+            verificationCodeManager = null;
         }
 
         try {
@@ -464,6 +502,19 @@ public class AuthMe implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
         firstJoinSessions.put(uuid, !player.hasPlayedBefore());
+        if (isRegisteredByName(player.getName())) {
+            unregisteredAtJoin.remove(uuid);
+        } else {
+            unregisteredAtJoin.add(uuid);
+        }
+        firstRegistrationDone.remove(uuid);
+        registrationFirstJoin.remove(uuid);
+        // registrationNotified is cleared on quit and on unregister; keeping it
+        // here would let a registration reported during the join event be
+        // announced twice by a later callback.
+        if (pendingRegistrationNotify.remove(uuid)) {
+            notifyRegistration(player);
+        }
 
         // Consume this connection's pre-join session once, then release the name.
         // The state no longer has to be trusted to a UUID that an offline-mode
@@ -593,6 +644,13 @@ public class AuthMe implements Listener {
         UUID uuid = player.getUniqueId();
         boolean biaInitiated = pendingLoginFutures.containsKey(uuid);
         completeFuture(pendingLoginFutures, uuid, true);
+        // Some AuthMe registration paths (notably the registerPlayer API) do
+        // not fire RegisterEvent. A successful login for a player who was
+        // unregistered when they joined is therefore also a registration.
+        if (unregisteredAtJoin.contains(uuid) && isRegisteredByName(player.getName())) {
+            unregisteredAtJoin.remove(uuid);
+            notifyRegistration(player);
+        }
         if (!biaInitiated) {
             closeAuthDialog(player);
         }
@@ -631,8 +689,11 @@ public class AuthMe implements Listener {
         titleFlushScheduled.remove(uuid);
         firstJoinSessions.remove(uuid);
         registeredThisSession.remove(uuid);
-        registrationNotifications.remove(uuid);
+        pendingRegistrationNotify.remove(uuid);
+        registrationNotified.remove(uuid);
+        registrationFirstJoin.remove(uuid);
         pendingEmail.remove(uuid);
+        Unregister.clearSession(uuid);
         postJoinScreensHandled.remove(uuid);
         recoveredThisSession.remove(uuid);
         loginTimeoutGenerations.merge(uuid, 1L, Long::sum);
@@ -650,6 +711,69 @@ public class AuthMe implements Listener {
         handleAuthMeUnregister(event.getPlayer());
     }
 
+    /**
+     * AuthMe sends a verification code in chat and asks the player to run
+     * /email code when an account with a stored email uses /unreg. Replace
+     * that with a dialog, then replay the original command so AuthMe still
+     * performs its normal password check.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onUnregisterCommand(PlayerCommandPreprocessEvent event) {
+        if (!plugin.cfg().emailUnregisterVerify()) return;
+        if (!plugin.cfg().dialogEnabled()) return;
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        if (unregisterReplay.contains(uuid)) return;
+        String command = unregisterCommand(event.getMessage());
+        if (command == null) return;
+        if (!isAuthenticated(player)) return;
+        if (plugin.biaList().isBypassed(uuid)) return;
+        if (!Version.supportsDialogs(uuid, player, plugin.cfg().dialogMinProtocolVersion())) return;
+        if (!isUnregisterVerificationRequired(player)) return;
+        String email = getStoredEmail(player.getName());
+        if (email == null || email.isBlank()) return;
+        event.setCancelled(true);
+        Unregister.start(player, plugin.cfg(), plugin.lang(), this, plugin.ipGuard(), command);
+    }
+
+    /**
+     * Returns the command without the leading slash when it is /unreg or
+     * /unregister (also namespaced forms such as authme:unreg), else null.
+     */
+    private static String unregisterCommand(String message) {
+        if (message == null) return null;
+        String command = message.startsWith("/") ? message.substring(1) : message;
+        command = command.trim();
+        if (command.isEmpty()) return null;
+        int space = command.indexOf(' ');
+        String name = (space < 0 ? command : command.substring(0, space)).toLowerCase(java.util.Locale.ROOT);
+        int colon = name.indexOf(':');
+        if (colon >= 0) {
+            // Only intercept AuthMe's own namespaced command; leave other
+            // plugins' commands that happen to use the same name alone.
+            if (!name.substring(0, colon).equals("authme")) return null;
+            name = name.substring(colon + 1);
+        }
+        if (!name.equals("unreg") && !name.equals("unregister")) return null;
+        String args = space < 0 ? "" : command.substring(space);
+        // AuthMe's command needs the password argument; without it AuthMe
+        // only shows the usage message, so don't send a code for that.
+        if (args.isBlank()) return null;
+        return name + args;
+    }
+
+    public boolean isUnregisterReplay(UUID uuid) {
+        return uuid != null && unregisterReplay.contains(uuid);
+    }
+
+    public void beginUnregisterReplay(UUID uuid) {
+        if (uuid != null) unregisterReplay.add(uuid);
+    }
+
+    public void endUnregisterReplay(UUID uuid) {
+        if (uuid != null) unregisterReplay.remove(uuid);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onAuthMeUnregisterByAdmin(UnregisterByAdminEvent event) {
         Player player = event.getPlayer();
@@ -664,10 +788,14 @@ public class AuthMe implements Listener {
         UUID uuid = player.getUniqueId();
         AuthInput.clearSession(uuid);
         EmailVerify.clearEmailSession(uuid);
+        Unregister.clearSession(uuid);
         com.authmebia.dialog.shared.InventoryAuthInput.clearSession(uuid);
         pendingEmail.remove(uuid);
         registeredThisSession.remove(uuid);
-        registrationNotifications.remove(uuid);
+        unregisteredAtJoin.add(uuid);
+        pendingRegistrationNotify.remove(uuid);
+        registrationNotified.remove(uuid);
+        registrationFirstJoin.remove(uuid);
         pendingTitleTriggers.remove(uuid);
         titleFlushScheduled.remove(uuid);
         postJoinScreensHandled.remove(uuid);
@@ -729,13 +857,37 @@ public class AuthMe implements Listener {
     }
 
     private void notifyRegistration(Player player) {
-        if (player == null || !player.isOnline()) return;
-        long now = System.currentTimeMillis();
+        if (player == null) return;
         UUID uuid = player.getUniqueId();
-        Long previous = registrationNotifications.get(uuid);
-        if (previous != null && now - previous < 10_000L) return;
-        registrationNotifications.put(uuid, now);
-        runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player));
+        if (!player.isOnline()) {
+            pendingRegistrationNotify.add(uuid);
+            return;
+        }
+        pendingRegistrationNotify.remove(uuid);
+        registeredThisSession.add(uuid);
+        unregisteredAtJoin.remove(uuid);
+        queueTitleTrigger(player, "is_registed");
+        // register_first is for the player's first registration in this join
+        // session. After an unregister the same player may register again; that
+        // second registration must use the normal "register" section instead of
+        // silently reusing (or skipping) the first-registration one.
+        //
+        // RegisterEvent, the login fallback and finishRegisterLogin all call
+        // this method, so cache the decision: otherwise a skipped first call
+        // could make the second call fall through to the "register" section.
+        boolean firstJoin = registrationFirstJoin.computeIfAbsent(uuid,
+                key -> firstRegistrationDone.add(key));
+        if (!registrationNotified.add(uuid)) return;
+        if (!plugin.cfg().discordNotifyEnabled(firstJoin)) {
+            plugin.getLogger().fine("Registration detected for " + player.getName()
+                    + " but Discord notifications are disabled (check discord.enabled and "
+                    + (firstJoin ? "discord.register_first.enabled" : "discord.register.enabled") + ")");
+            return;
+        }
+        plugin.getLogger().fine("Sending Discord registration notification for "
+                + player.getName() + " (" + (firstJoin ? "register_first" : "register") + ")");
+        final boolean first = firstJoin;
+        runAsync(() -> new com.authmebia.api.Welcome(plugin).handle(player, first));
     }
 
     private CompletableFuture<Boolean> awaitLogin(Player player, long timeoutMs) {
@@ -816,12 +968,18 @@ public class AuthMe implements Listener {
         UUID uuid = event.getPlayer().getUniqueId();
         AuthInput.clearSession(uuid);
         EmailVerify.clearEmailSession(uuid);
+        Unregister.clearSession(uuid);
         pendingEmail.remove(uuid);
         firstJoinSessions.remove(uuid);
+        firstRegistrationDone.remove(uuid);
+        registrationFirstJoin.remove(uuid);
+        unregisterReplay.remove(uuid);
         registeredThisSession.remove(uuid);
+        unregisteredAtJoin.remove(uuid);
+        pendingRegistrationNotify.remove(uuid);
         pendingTitleTriggers.remove(uuid);
         titleFlushScheduled.remove(uuid);
-        registrationNotifications.remove(uuid);
+        registrationNotified.remove(uuid);
         postJoinScreensHandled.remove(uuid);
         recoveredThisSession.remove(uuid);
         loginTimeoutGenerations.remove(uuid);
@@ -900,6 +1058,14 @@ public class AuthMe implements Listener {
     public void logout(Player player) {
         try { forceLogout.invoke(api, player); }
         catch (Exception ignored) {}
+    }
+
+    public void forceUnregister(Player player) {
+        if (player == null || forceUnregister == null) return;
+        try { forceUnregister.invoke(api, player); }
+        catch (Exception e) {
+            plugin.getLogger().warning("forceUnregister failed for " + player.getName() + ": " + e.getMessage());
+        }
     }
 
     public boolean checkPassword(String name, String password) {
@@ -1100,8 +1266,30 @@ public class AuthMe implements Listener {
     public boolean isEmailVerificationActive() {
         if (!plugin.cfg().emailEnabled()) return false;
         if (debugEmailOverride != null) return debugEmailOverride;
+        return hasEmailService();
+    }
+
+    /** True when AuthMe itself has usable SMTP settings, independent of our own email toggle. */
+    public boolean hasEmailService() {
         if (emailService == null || emailHasAllInfo == null) return false;
         try { return (boolean) emailHasAllInfo.invoke(emailService); }
+        catch (Exception e) { return false; }
+    }
+
+    /**
+     * Learn form AuthMe's check used by /unreg: mail configured, email stored,
+     * permission granted and the player not verified in this session.
+     */
+    public boolean isUnregisterVerificationRequired(Player player) {
+        if (player == null || verificationCodeManager == null || vcIsVerificationRequired == null) return false;
+        try { return (boolean) vcIsVerificationRequired.invoke(verificationCodeManager, player); }
+        catch (Exception e) { return false; }
+    }
+
+    /** Marks the player as verified in AuthMe's session, like /email code does. */
+    public boolean markVerified(String name) {
+        if (name == null || verificationCodeManager == null || vcVerify == null) return false;
+        try { vcVerify.invoke(verificationCodeManager, name); return true; }
         catch (Exception e) { return false; }
     }
 

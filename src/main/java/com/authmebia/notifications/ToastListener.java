@@ -14,7 +14,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerAdvancementDoneEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +25,7 @@ public final class ToastListener implements Listener {
     private final ToastStore store;
     private final Set<UUID> messagedThisSession = ConcurrentHashMap.newKeySet();
     private final Set<UUID> advancementThisSession = ConcurrentHashMap.newKeySet();
-    private final Set<String> registeredAdvancementKeys = new HashSet<>();
+    private final Set<String> registeredAdvancementKeys = ConcurrentHashMap.newKeySet();
 
     public ToastListener(AuthMeBia plugin) {
         this.plugin = plugin;
@@ -59,7 +58,9 @@ public final class ToastListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
         if (!messagedThisSession.add(uuid)) return;
-        fireAll(player, Toast.Check.FIRST_MESSAGE);
+        plugin.scheduler().runOnPlayer(player, () -> {
+            if (player.isOnline()) fireAll(player, Toast.Check.FIRST_MESSAGE);
+        });
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -187,7 +188,13 @@ public final class ToastListener implements Listener {
         String icon = toast.icon() == null || toast.icon().isBlank() ? "minecraft:paper" : toast.icon();
         String frame = toast.frame() == null ? Toast.Frame.TASK.jsonValue() : toast.frame().jsonValue();
 
+        // Since Minecraft 26.3 a visible root advancement (display without a
+        // parent) must declare a background, otherwise the advancement codec
+        // rejects the JSON and loadAdvancement returns null. Hanging the toast
+        // under the invisible vanilla recipes root keeps it a branch, so no
+        // background is required and no extra advancement tab is created.
         return "{"
+                + "\"parent\":\"minecraft:recipes/root\","
                 + "\"criteria\":{\"trigger\":{\"trigger\":\"minecraft:tick\"}},"
                 + "\"requirements\":[[\"trigger\"]],"
                 + "\"display\":{"

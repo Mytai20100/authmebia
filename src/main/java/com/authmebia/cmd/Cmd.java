@@ -106,15 +106,21 @@ public class Cmd {
                     .requires(source -> source.getSender().isOp())
                     .then(Commands.argument("feature", StringArgumentType.word())
                         .suggests((ctx, builder) -> {
-                            for (String f : new String[]{"captcha", "email", "register", "login", "recover", "rule"})
+                            for (String f : new String[]{"captcha", "email", "register", "login", "recover", "rule", "discord"})
                                 builder.suggest(f);
                             return builder.buildFuture();
                         })
                         .then(Commands.argument("value", StringArgumentType.word())
                             .suggests((ctx, builder) -> {
-                                builder.suggest("true");
-                                builder.suggest("false");
-                                builder.suggest("show");
+                                String feature = StringArgumentType.getString(ctx, "feature");
+                                if ("discord".equalsIgnoreCase(feature)) {
+                                    builder.suggest("register_first");
+                                    builder.suggest("register");
+                                } else {
+                                    builder.suggest("true");
+                                    builder.suggest("false");
+                                    builder.suggest("show");
+                                }
                                 return builder.buildFuture();
                             })
                             .executes(ctx -> {

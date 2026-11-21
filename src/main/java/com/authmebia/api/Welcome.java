@@ -24,11 +24,20 @@ public class Welcome {
     public Welcome(AuthMeBia plugin) {
         this.plugin = plugin;
     }
-    public void handle(Player player) {
+    public void handle(Player player, boolean firstJoin) {
+        handle(player, firstJoin, false);
+    }
+
+    /**
+     * @param force when true the {@code enabled} toggles are ignored so the
+     *              debug command can preview a notification; a webhook URL is
+     *              still required.
+     */
+    public void handle(Player player, boolean firstJoin, boolean force) {
         boolean imageEnabled = plugin.cfg().welcomeImageEnabled();
-        boolean discordEnabled = plugin.cfg().discordEnabled();
+        boolean discordEnabled = force ? hasWebhook() : plugin.cfg().discordNotifyEnabled(firstJoin);
         if (!imageEnabled) {
-            if (discordEnabled) sendDiscordMessage(player);
+            if (discordEnabled) sendDiscordMessage(player, firstJoin);
             return;
         }
         try {
@@ -36,13 +45,18 @@ public class Welcome {
             if (!jsonFile.exists()) {
                 if (discordEnabled) {
                     plugin.getLogger().warning("welcome.json is missing; falling back to the Discord text message");
-                    sendDiscordMessage(player);
+                    sendDiscordMessage(player, firstJoin);
                 } else {
                     plugin.getLogger().warning("welcome.json is missing; skipping welcome image");
                 }
                 return;
             }
             String raw = Files.readString(jsonFile.toPath());
+            if (raw.contains("{player_avatar}")) {
+                // Skin plugins often apply the profile texture shortly after
+                // the player joins; give them a moment before drawing.
+                waitForSkinTexture(player);
+            }
             JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
             JsonObject sizeObj = root.getAsJsonObject("welcome_size");
             int width = sizeObj.get("width").getAsInt();
@@ -76,22 +90,92 @@ public class Welcome {
                 if (!webhook.isEmpty()) {
                     Discord.sendImage(plugin.httpClient(), webhook, imageBytes,
                             "welcome_" + player.getName() + ".png",
-                            plugin.cfg().discordMessage(player.getName()));
+                            caption(player, firstJoin));
                 }
             }
         } catch (Exception e) {
             plugin.getLogger().warning("Welcome image error: " + e.getMessage());
-            if (discordEnabled) sendDiscordMessage(player);
+            if (discordEnabled) sendDiscordMessage(player, firstJoin);
         }
     }
-    private void sendDiscordMessage(Player player) {
+
+    private void sendDiscordMessage(Player player, boolean firstJoin) {
         String webhook = plugin.cfg().discordWebhook();
         if (webhook == null || webhook.isBlank()) return;
-        String message = plugin.cfg().discordMessage(player.getName());
-        if (message == null || message.isBlank()) return;
-        JsonObject payload = new JsonObject();
-        payload.addProperty("content", message);
-        Discord.send(plugin.httpClient(), webhook.trim(), payload.toString());
+        String rawTitle = plugin.cfg().discordNotifyTitle(firstJoin, player.getName());
+        String rawContent = plugin.cfg().discordNotifyContent(firstJoin, player.getName());
+        boolean showAvatar = hasAvatarToken(rawTitle) || hasAvatarToken(rawContent);
+        String title = DiscordMarkdown.render(stripAvatar(rawTitle));
+        String content = DiscordMarkdown.render(stripAvatar(rawContent));
+        byte[] avatar = null;
+        if (showAvatar) {
+            waitForSkinTexture(player);
+            avatar = playerHeadPng(player);
+            if (avatar == null) {
+                plugin.getLogger().fine("Discord notification for " + player.getName()
+                        + " has no avatar: the player profile has no skin texture. "
+                        + "On an offline-mode server install a skin plugin so the profile carries one.");
+            }
+        }
+        JsonObject payload = Discord.componentsV2(title, content,
+                avatar != null ? "attachment://player_head.png" : null);
+        if (avatar != null) {
+            Discord.sendComponents(plugin.httpClient(), webhook.trim(), payload,
+                    avatar, "player_head.png");
+        } else {
+            Discord.sendComponents(plugin.httpClient(), webhook.trim(), payload);
+        }
+    }
+
+    private String caption(Player player, boolean firstJoin) {
+        String title = DiscordMarkdown.render(stripAvatar(
+                plugin.cfg().discordNotifyTitle(firstJoin, player.getName())));
+        String content = DiscordMarkdown.render(stripAvatar(
+                plugin.cfg().discordNotifyContent(firstJoin, player.getName())));
+        String caption = title.isBlank() ? content
+                : content.isBlank() ? title : title + "\n" + content;
+        return caption.length() <= 2000 ? caption : caption.substring(0, 2000);
+    }
+
+    private static boolean hasAvatarToken(String raw) {
+        return raw != null && raw.contains("{player_avatar}");
+    }
+
+    private static String stripAvatar(String raw) {
+        return raw == null ? "" : raw.replace("{player_avatar}", "").trim();
+    }
+
+    /**
+     * Renders the player's head from the skin texture already attached to the
+     * profile and returns it as a PNG. The image is uploaded with the webhook
+     * message, so notifications do not depend on an external avatar service.
+     */
+    private byte[] playerHeadPng(Player player) {
+        BufferedImage head = fetchPlayerHead(player);
+        if (head == null) return null;
+        int size = 128;
+        BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = scaled.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g.drawImage(head, 0, 0, size, size, null);
+        } finally {
+            g.dispose();
+        }
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageIO.write(scaled, "png", out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            plugin.getLogger().warning("Player head render error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private boolean hasWebhook() {
+        String webhook = plugin.cfg().discordWebhook();
+        return webhook != null && !webhook.isBlank();
     }
 
     private void drawLayer(Graphics2D g, JsonObject layer, Player player, int canvasW, int canvasH) {
@@ -146,6 +230,33 @@ public class Welcome {
             plugin.getLogger().warning("Layer draw error: " + e.getMessage());
         }
     }
+    private boolean hasSkinTexture(Player player) {
+        try {
+            org.bukkit.profile.PlayerTextures textures = player.getPlayerProfile().getTextures();
+            return textures != null && textures.getSkin() != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * Skin plugins can fill the player profile a moment after the join. Both
+     * notification paths run on async scheduler threads, so waiting briefly
+     * here is safe and keeps the avatar out of a race with those plugins.
+     */
+    private void waitForSkinTexture(Player player) {
+        if (hasSkinTexture(player) || org.bukkit.Bukkit.isPrimaryThread()) return;
+        for (int attempt = 0; attempt < 4 && player.isOnline(); attempt++) {
+            try {
+                Thread.sleep(500L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (hasSkinTexture(player)) return;
+        }
+    }
+
     private BufferedImage fetchPlayerHead(Player player) {
         try {
             org.bukkit.profile.PlayerTextures textures = player.getPlayerProfile().getTextures();
@@ -159,12 +270,10 @@ public class Welcome {
         } catch (Exception e) {
             plugin.getLogger().warning("Skin texture read error: " + e.getMessage());
         }
-        try {
-            String url = "https://crafatar.com/avatars/" + player.getUniqueId() + "?size=64&overlay";
-            return fetchImage(url);
-        } catch (Exception e) {
-            return null;
-        }
+        // No skin texture is available (common on offline-mode servers without
+        // a skin plugin). Omit the thumbnail instead of relying on a third-party
+        // avatar service that may be unreachable or rate-limited.
+        return null;
     }
 
     private BufferedImage fetchImageFromUrl(URL url) {
@@ -186,7 +295,10 @@ public class Welcome {
         Graphics2D hg = head.createGraphics();
         try {
             hg.drawImage(skin, 0, 0, headSize, headSize, 8, 8, 16, 16, null);
-            if (skin.getHeight() >= 64) {
+            // The hat overlay exists in both the modern 64x64 format and the
+            // legacy 64x32 format (at 40,8 in both). A height check of 64
+            // would skip it for legacy skins.
+            if (skin.getWidth() >= 64 && skin.getHeight() >= 32) {
                 hg.drawImage(skin, 0, 0, headSize, headSize, 40, 8, 48, 16, null);
             }
         } finally {

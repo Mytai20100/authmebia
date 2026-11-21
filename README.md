@@ -3,7 +3,7 @@
 
 # authmebia
 
-An addon for AuthMe Reloaded that replaces dialog-based login and register prompts of authme reloaded with dialog customizable.
+An addon for AuthMe Reloaded that replaces dialog-based login and register prompts of authme reloaded with dialog customizable.It same a addons Qol :P for auth in your server
 
 [GitHub](https://github.com/Mytai20100/authmebia)
 </div>
@@ -103,6 +103,18 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 
 ---
 
+## Why I need it ?
+- bia cooked for admin realy wanna custom simple dialogs of authme reload
+- It provide a new experience login / register better than command
+
+## But authme reload (itself already have dialog for login / register).
+- I think future authme reload will have full feature of bia :D so project can die or not :P
+
+## Security
+- If u worry abt security of authmebia , u can don't use auto login of bia .
+
+---
+
 | Requirement      | Version  | Reason                                                  |
 |------------------|----------|---------------------------------------------------------|
 | Minecraft client | 1.21.6+  | Client Can render dialogs                               |
@@ -140,6 +152,7 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 - Email verification dialog on registration (reuses AuthMe's SMTP config)
 - **Email without verification** (`dialog.register.email_add_nonverify`): asks for an email during registration and stores it on the AuthMe account as already verified, without sending a code or showing the verification dialog. Works even when `email.enabled` is false
 - **"Forgot Password?"**: a button on the login dialog lets players reset their own password without an admin. It looks up the email already on authme (set during email-verified registration or with `email_add_nonverify`), sends a reset code to it through AuthMe's SMTP config, and |  once the code is verified — shows the same reset dialog used for admin-forced recovery. Accounts with no email on file are told to contact an admin instead
+- **Unregister verification dialog** (`email.unregister_verify`, on by default): when a player with an email on file runs `/unreg` or `/unregister`, AuthMeBia sends the code and shows the same kind of verify dialog used by forgot password instead of AuthMe's chat-based `/email code` flow. After the code is verified the original command is replayed, so AuthMe still performs its own password check before deleting the account. Requires AuthMe's SMTP settings and does not depend on `email.enabled`
 - Admin-forced password recovery: use `/bia recover <player>` to flag an account; the player is shown a reset dialog on their next login or immediately if they are already online. The reset dialog now follows `auth_mode.mode` (password/PIN/slider), matching the register and login dialogs instead of always showing a text field
 - Server rules agreement checkbox shown to new players before their account is created
 - Login attempt limit with kick after too many wrong passwords
@@ -147,6 +160,7 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 - IP ban with escalating ban durations after repeated failed logins across sessions.Only dialogs of bia
 
 **Notifications**
+- Discord webhook notifications on registration (`discord.*`), sent as Components V2 messages with an optional title, separator, and the player's skin as a thumbnail. The head is rendered from the player's own profile texture and uploaded with the message, so no third-party avatar service is needed
 - Custom notifications (`notifications.toasts`): show the small achievement popup in the corner of the screen on `first_register`, `first_login`, `first_message`, or `first_advancement`, with a configurable title, description, item icon, sound, and advancement frame (`task`/`goal`/`challenge`).
 - `/bia notifier <toast> <player> show [seconds]` lets an admin preview any configured toast on an online player without touching its persisted "already shown" state, so testing never affects whether it fires for real later
 - **Custom titles** (`custom_titles` + `<titles:name>`): define named title/subtitle/actionbar entries with their own delay, then play them from `titles_scripts` on login, register, recover, or custom screens. Use `/bia titles <title> <player> show [seconds]` to preview one entry on an online player; `[seconds]` optionally overrides its delay
@@ -159,8 +173,8 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 - Custom screens: define any number of dialog windows in config.yml and push them to any online player with `/bia screen <id> [player]`, or auto-show them on join with `trigger: postjoin`/`trigger: prejoin` instead of only on command. Screens with the same trigger run sequentially in config order: prejoin screens block until each server-side button click (with a 30-second safety timeout if the client never responds), and postjoin screens queue one after another instead of replacing each other; `open_url`/`copy` and ESC do not advance the queue. Screens can include an optional agreement checkbox (`checkbox_label`/`checkbox_action`) that permanently suppresses the screen for a player once ticked and dismissed; reset it with `/bia screen reset <player> [id]`
 - Debug commands: preview individual dialogs in-game without going through the full login flow
 - `/bia look <ip|player>` shows IPinfo data for an address or UUID/type information for a player name; the free IPinfo JSON endpoint works without configuration
-- `/bia settings` edits common options in category sub-dialogs and can reload after saving
-- `/bia config` edits config.yml in a dialog, falling back to a section picker for large files
+- `/bia settings` edits common options in category sub-dialogs; saving reloads config and lang immediately
+- `/bia config` edits config.yml in a dialog, falling back to a section picker for large files; saving reloads config and lang immediately
 - Startup check that warns in the console if AuthMe's own built-in dialog (`settings.registration.dialog.preJoin/postJoin.enable`) is also enabled, to prevent two dialogs from appearing at once
 
 **Extras**
@@ -183,7 +197,7 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 | `/bia recover <player>` | `bia.admin.recover` | Force password reset on next login                                                                          |
 | `/bia screen <id> [player]` | OP | Show a custom screen to a player                                                                            |
 | `/bia screen reset <player> [id]` | OP | Reset a player's "closed forever" checkbox for a custom screen (omit `id` to reset all screens)             |
-| `/bia debug <feature> <true\|false\|show>` | OP | Test features in-game                                                                                       |
+| `/bia debug <feature> <value>` | OP | Test features in-game (`true`/`false`/`show`, or `register_first`/`register` for `discord`)                                   |
 | `/bia notifier <toast> <player> show [seconds]` | OP | Preview a configured toast on an online player without affecting its once-per-player state                  |
 | `/bia titles <title> <player> show [seconds]` | `authmebia.titles` | Preview a `custom_titles` entry on an online player; `[seconds]` optionally overrides its delay              |
 | `/bia look <ip\|player>` | `authmebia.look` | Show IP or player information                                                                               |
@@ -192,8 +206,10 @@ An addon for AuthMe Reloaded that replaces dialog-based login and register promp
 
 Players with `authmebia.update` receive an in-game message when a newer release is found after the startup check or when they join.
 
-Debug features: `captcha`, `email`, `register`, `login`, `recover`, `rule`.
+Debug features: `captcha`, `email`, `register`, `login`, `recover`, `rule`, `discord`.
 Use `show` with `captcha` or `email` to preview those dialogs directly without going through the login flow.
+`/bia debug rule true` shows the actual rule dialog in-game with the configured title, content, checkbox and button; ESC closes the preview (the real pre-join dialog cannot be closed with ESC), and agreeing there only prints a debug message.
+`/bia debug discord <register_first|register>` sends a test notification to the configured webhook (ignores the `enabled` toggles, uses your own name and skin).
 
 ---
 
@@ -203,14 +219,16 @@ AuthMeBia hooks into AuthMe Reloaded through reflection rather than a compile-ti
 
 | Class | Usage |
 |---|---|
-| `fr.xephi.authme.api.v3.AuthMeApi` | Core operations: isRegistered, forceLogin, forceRegister, forceLogout, checkPassword, changePassword, isAuthenticated, registerPlayer, getLastIp, getLastLoginTime |
+| `fr.xephi.authme.api.v3.AuthMeApi` | Core operations: isRegistered, forceLogin, forceRegister, forceLogout, forceUnregister, checkPassword, changePassword, isAuthenticated, registerPlayer, getLastIp, getLastLoginTime |
 | `fr.xephi.authme.data.auth.PlayerAuth` | Read player data: isPremium, getPremiumUuid, getEmail, getTotpKey, setEmail |
 | `fr.xephi.authme.data.auth.PlayerCache` | isAuthenticated(name) — used for in-memory authentication checks |
+| `fr.xephi.authme.data.VerificationCodeManager` | Mirror AuthMe's `/unreg` check (`isVerificationRequired`) and mark the session verified after the dialog code is correct (`verify`) |
 | `fr.xephi.authme.datasource.DataSource` | Fetch PlayerAuth records (getAuth), check `auto.session_autologin` state (hasSession), persist email changes (updateEmail), and enforce `settings.restrictions.maxRegPerIp` (getAllAuthsByIp) |
 | `fr.xephi.authme.mail.EmailService` | Check SMTP availability, send verification codes |
 | `fr.xephi.authme.security.totp.TotpAuthenticator` | Verify TOTP codes for 2FA dialog (`checkCode(PlayerAuth, String)`) |
 | `fr.xephi.authme.events.LoginEvent` | Detect successful login to complete async futures |
 | `fr.xephi.authme.events.RegisterEvent` | Detect successful registration |
+| `fr.xephi.authme.events.UnregisterByPlayerEvent` / `UnregisterByAdminEvent` | Reset per-session dialog state after an account is removed |
 | `fr.xephi.authme.events.FailedLoginEvent` | Detect failed login |
 
 AuthMeBia also optionally bridges to Floodgate's API the same way used in the AuthMe Reloaded API, only when `auto.bedrock_autologin` or a Bedrock dialog override is in use:
@@ -401,8 +419,22 @@ discord:
   enabled: false
   # Must be an https:// URL.
   webhook_url: ""
-  # Also sent as text when welcome_image.enabled is false.
-  message: "**{player}** has registered."
+  # First registration in the player's current join session (normally their
+  # first-ever join).
+  register_first:
+    enabled: true
+    title: "Newbie :D"
+    content: "**{player}** has registered. {player_avatar}"
+  # Any other registration, e.g. after an unregister in the same session.
+  register:
+    enabled: true
+    title: ""
+    content: "**{player}** has registered. {player_avatar}"
+  # MiniMessage works in title/content (converted to Discord markdown);
+  # {player} and {player_avatar} are replaced. The avatar is uploaded with the
+  # message, so no external avatar service is needed. The player profile must
+  # contain a skin texture; without one (offline-mode servers usually need a
+  # skin plugin) the message is sent without a thumbnail.
 
 welcome_image:
   enabled: false
@@ -483,6 +515,8 @@ email:
   # For email capture during registration without verification, see
   # dialog.register.email_add_nonverify above.
   enabled: false
+  # Replace AuthMe's chat-based /unreg code with a dialog.
+  unregister_verify: true
   code_length: 6
   resend_cooldown: 60
   field_label: "Email"
@@ -494,6 +528,7 @@ email:
   resend_button: "<yellow>Resend code</yellow>"
   resend_sound: ""
   resend_button_cooldown: "<gray>Resend ({cooldown}s)</gray>"
+  cancel_button: "<gray>Cancel</gray>"
   invalid_email_message: "<red>Please enter a valid email address.</red>"
   send_failed_message: "<red>Could not send the email. Please contact an admin.</red>"
   wrong_code_error: "Incorrect code"

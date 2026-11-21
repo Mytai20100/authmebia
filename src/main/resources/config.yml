@@ -405,17 +405,46 @@ rule:
   agree_sound: ""
 
 discord:
-  # If true, sends a Discord webhook notification when a player registers.
+  # If true, sends Discord webhook notifications when a player registers.
+  # Messages are sent with the Components V2 layout (container, text display,
+  # separator and the player's skin as a thumbnail).
   enabled: false
 
   # Discord webhook URL to send notifications to. Required if enabled is true.
   # Must be an https URL.
   webhook_url: ""
 
-  # Message sent when a player registers, including registrations performed
-  # through AuthMe's own /authme register command. {player} is replaced.
-  # If welcome_image.enabled is true, this is used as the image caption.
-  message: "**{player}** has registered."
+  # Notification for a player's first registration in their current join
+  # session (normally the first time they ever join). Set enabled to false to
+  # skip this notification.
+  register_first:
+    enabled: true
+    # Heading line shown above the content. Supports MiniMessage.
+    # Leave empty ("") to hide it.
+    title: "Newbie :D"
+    # Body text. Supports MiniMessage and these placeholders:
+    #   {player}        - the player's name
+    #   {player_avatar} - shows the player's skin as a thumbnail on the right.
+    #                     The rendered head is uploaded with the webhook message,
+    #                     so no external avatar service is required. The player
+    #                     profile must contain a skin texture; on offline-mode
+    #                     servers without a skin plugin the thumbnail is omitted.
+    content: "**{player}** has registered. {player_avatar}"
+
+  # Notification for any other registration, e.g. after an admin removed the
+  # account, or after an unregister in the same join session.
+  register:
+    enabled: true
+    title: ""
+    content: "**{player}** has registered. {player_avatar}"
+
+  # Legacy key, kept as a fallback for the content above when
+  # register_first.content / register.content is missing.
+  # message: "**{player}** has registered."
+
+  # MiniMessage is converted to Discord markdown: bold, italic, underline,
+  # strikethrough, spoiler and clickable links work. Discord has no text
+  # colors, so color tags are ignored.
 
 welcome_image:
   # If true, sends a welcome image to the player (see welcome.json for the
@@ -621,6 +650,15 @@ email:
   # dialog.register.email_add_nonverify above.
   enabled: false
 
+  # Replace AuthMe's chat-based /unreg verification code with a dialog.
+  # When a player with a stored email runs /unreg or /unregister, AuthMe
+  # normally emails a code and asks them to type /email code <code>. With this
+  # enabled, AuthMeBia shows the same kind of code dialog used by forgot
+  # password, then lets AuthMe finish the unregister (including its password
+  # check). Requires AuthMe's SMTP settings. This works even when the
+  # registration email feature above is disabled.
+  unregister_verify: true
+
   # Number of digits in the emailed verification code. Valid range: 4-8.
   code_length: 6
 
@@ -654,6 +692,9 @@ email:
   # Label of the resend button while the cooldown is still active.
   # Use {cooldown} for the remaining seconds.
   resend_button_cooldown: "<gray>Resend ({cooldown}s)</gray>"
+
+  # Label of the cancel button shown in the /unreg verification dialog.
+  cancel_button: "<gray>Cancel</gray>"
 
   # Messages (chat). Support MiniMessage and {player}.
   # Shown when the entered email is not a valid address.

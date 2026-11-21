@@ -107,7 +107,7 @@ public final class Login {
                     .base(buildBase(cfg.loginTitle(name), cfg.loginContent(name), false,
                             List.of(
                                     DialogInput.text("password", Component.text(passLabel)).maxLength(64).width(cfg.inputWidth()).build()
-                            ), DialogAfterAction.WAIT_FOR_RESPONSE))
+                            ), DialogAfterAction.CLOSE))
                     .type(buildType(cfg, name, loginButtons,
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));
@@ -289,7 +289,7 @@ public final class Login {
                     .base(buildBase(cfg.loginTitle(playerName), cfg.loginContent(playerName), allowClose,
                             List.of(
                                     DialogInput.text("password", Component.text(cfg.loginPasswordLabel())).maxLength(64).width(cfg.inputWidth()).build()
-                            ), DialogAfterAction.WAIT_FOR_RESPONSE))
+                            )))
                     .type(buildType(cfg, playerName, loginButtons,
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
             ));

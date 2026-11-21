@@ -1,6 +1,7 @@
 package com.authmebia.cmd.config;
 
 import com.authmebia.AuthMeBia;
+import com.authmebia.cmd.reload.Reload;
 import com.authmebia.dialog.Dialoglib;
 import com.authmebia.dialog.util.IconSpec;
 import com.authmebia.dialog.util.Util;
@@ -229,9 +230,22 @@ public final class ConfigEditor {
                 configFile.writeAtomic(text, snapshot.hash());
                 Util.runOnMain(player, () -> {
                     try {
+                        boolean reloaded = true;
+                        try {
+                            Reload.reload(plugin);
+                        } catch (Throwable t) {
+                            reloaded = false;
+                            plugin.getLogger().warning(
+                                    "Reload after config save failed: " + t.getMessage());
+                        }
                         if (player.isOnline()) {
-                            player.sendMessage(plugin.lang().component("config_editor.saved",
-                                    "config.yml saved.", Map.of()));
+                            String messageKey = reloaded
+                                    ? "config_editor.saved_reloaded"
+                                    : "config_editor.saved_reload_failed";
+                            String fallback = reloaded
+                                    ? "config.yml saved and reloaded."
+                                    : "config.yml saved, but the reload failed. Check the console.";
+                            player.sendMessage(plugin.lang().component(messageKey, fallback, Map.of()));
                         }
                     } catch (Throwable t) {
                         plugin.getLogger().warning("Config editor confirmation failed: " + t.getMessage());

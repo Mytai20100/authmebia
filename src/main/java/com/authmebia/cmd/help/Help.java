@@ -28,9 +28,10 @@ public final class Help {
                     "Preview a custom title for an online player"));
         }
         if (op) {
-            sb.append(line("/bia debug <feature> <true|false|show>", "Test a feature (OP only)"));
-            sb.append(note("  Features: captcha, email, register, login, recover, rule"));
+            sb.append(line("/bia debug <feature> <value>", "Test a feature (OP only)"));
+            sb.append(note("  Features: captcha, email, register, login, recover, rule, discord"));
             sb.append(note("  Use 'show' with captcha/email to preview the dialog GUI"));
+            sb.append(note("  Discord: /bia debug discord <register_first|register> sends a test webhook"));
             sb.append(line("/bia notifier <toast> <player> show [seconds]", "Preview a custom toast notification (OP only)"));
             sb.append(line("/bia screen <id> [player]", "Show a custom screen to a player (OP only)"));
             sb.append(line("/bia screen reset <player>", "Reset every screen's \"closed forever\" checkbox for a player (OP only)"));

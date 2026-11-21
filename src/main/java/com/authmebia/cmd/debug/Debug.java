@@ -8,6 +8,7 @@ import com.authmebia.dialog.emailverify.EmailVerify;
 import com.authmebia.dialog.login.Login;
 import com.authmebia.dialog.recover.Recover;
 import com.authmebia.dialog.register.Register;
+import com.authmebia.dialog.rule.Rule;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
@@ -119,17 +120,46 @@ public final class Debug {
                     sender.sendMessage(Component.text("[debug] Must be a player to test GUI.", NamedTextColor.RED));
                     return;
                 }
-                if (!value) {
-                    sender.sendMessage(Component.text("[debug] Use 'true' to show the rule dialog.", NamedTextColor.RED));
+                if (!value && !isShow) {
+                    sender.sendMessage(Component.text("[debug] Use 'true' or 'show' to display the rule dialog.", NamedTextColor.RED));
                     return;
                 }
                 sender.sendMessage(Component.text(
-                    "[debug] Rule dialog content:\nTitle: " + Cfg.withPlayerContextValue(p.getName(), () -> cfg.ruleTitle(p.getName()).toString()) + "\n"
-                    + "Note: rule dialog is pre-spawn only. To test fully, set dialog.menu=true and rejoin.",
-                    NamedTextColor.YELLOW));
+                        "[debug] Showing rule dialog preview..."
+                        + (cfg.ruleEnabled() ? "" : " (rule.enabled=false, so it will not appear on join)"),
+                        NamedTextColor.YELLOW));
+                runOnPlayer.accept(p, () -> Rule.showRuleDebugIngame(p, cfg));
+            }
+            case "discord" -> {
+                boolean firstJoin;
+                if ("register_first".equalsIgnoreCase(rawValue)) {
+                    firstJoin = true;
+                } else if ("register".equalsIgnoreCase(rawValue)) {
+                    firstJoin = false;
+                } else {
+                    sender.sendMessage(Component.text(
+                        "[debug] Usage: /bia debug discord <register_first|register>", NamedTextColor.RED));
+                    return;
+                }
+                if (!(sender instanceof Player p)) {
+                    sender.sendMessage(Component.text(
+                        "[debug] Must be a player: the test message uses your name and skin.", NamedTextColor.RED));
+                    return;
+                }
+                String webhook = cfg.discordWebhook();
+                if (webhook == null || webhook.isBlank()) {
+                    sender.sendMessage(Component.text(
+                        "[debug] discord.webhook_url is empty in config.yml.", NamedTextColor.RED));
+                    return;
+                }
+                sender.sendMessage(Component.text(
+                    "[debug] Sending Discord notification '" + (firstJoin ? "register_first" : "register")
+                    + "' (enabled toggles ignored)...", NamedTextColor.YELLOW));
+                plugin.scheduler().runAsync(() ->
+                    new com.authmebia.api.Welcome(plugin).handle(p, firstJoin, true));
             }
             default -> sender.sendMessage(Component.text(
-                "[debug] Unknown feature '" + feature + "'. Valid features: captcha, email, register, login, recover, rule",
+                "[debug] Unknown feature '" + feature + "'. Valid features: captcha, email, register, login, recover, rule, discord",
                 NamedTextColor.RED));
         }
     }

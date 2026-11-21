@@ -108,7 +108,7 @@ public final class Register {
             conn.getAudience().showDialog(Dialog.create(d -> d
                     .empty()
                     .base(buildBase(cfg.registerTitle(playerName), cfg.registerContent(playerName), false, inputs,
-                            DialogAfterAction.WAIT_FOR_RESPONSE))
+                            DialogAfterAction.CLOSE))
                     .type(buildType(cfg, playerName,
                             List.of(btn(cfg, cfg.submitRegisterButton(), cfg.registerSubmitSound(), submit)),
                             btn(cfg, cfg.logoutButton(), cfg.logoutSound(), logoutCb)))
@@ -227,8 +227,7 @@ public final class Register {
             boolean allowClose = cfg.dialogAllowClose();
             player.showDialog(Dialog.create(d -> d
                     .empty()
-                    .base(buildBase(cfg.registerTitle(playerName), cfg.registerContent(playerName), allowClose, inputs,
-                            DialogAfterAction.WAIT_FOR_RESPONSE))
+                    .base(buildBase(cfg.registerTitle(playerName), cfg.registerContent(playerName), allowClose, inputs))
                     .type(buildType(cfg, playerName,
                             List.of(btn(cfg, cfg.submitRegisterButton(), cfg.registerSubmitSound(), (r, a) -> {
                                 if (!(a instanceof Player p)) return;
